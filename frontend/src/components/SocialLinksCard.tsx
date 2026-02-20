@@ -95,12 +95,12 @@ export function SocialLinksCard({ socialMedia }: SocialLinksCardProps) {
           </div>
 
           {/* Additional Insights (if available) */}
-          {(instagram.product_tags_count !== null || instagram.avg_days_between_posts !== null) && (
+          {(instagram.product_tags_count != null || instagram.avg_days_between_posts != null) && (
             <div className="mt-2 pt-2 border-t border-purple-100 flex gap-4 text-xs text-gray-600">
-              {instagram.product_tags_count !== null && instagram.product_tags_count > 0 && (
+              {instagram.product_tags_count != null && instagram.product_tags_count > 0 && (
                 <div>📦 {instagram.product_tags_count} tagged products</div>
               )}
-              {instagram.avg_days_between_posts !== null && (
+              {instagram.avg_days_between_posts != null && (
                 <div>📅 Posts every {instagram.avg_days_between_posts.toFixed(1)} days</div>
               )}
             </div>
