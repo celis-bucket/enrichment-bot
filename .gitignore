@@ -1,0 +1,58 @@
+# Environment variables and secrets
+.env
+credentials.json
+token.json
+
+# Temporary files
+.tmp/
+*.tmp
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+/lib/
+/lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Virtual environments
+venv/
+env/
+ENV/
+.venv
+
+# IDE
+.vscode/
+.idea/
+.claude/settings.local.json
+*.swp
+*.swo
+*~
+
+# Node / Frontend
+node_modules/
+.next/
+out/
+
+# Training data & model artifacts
+*.csv
+tools/orders_estimator/models/
+
+# OS
+.DS_Store
+Thumbs.db
+nul
