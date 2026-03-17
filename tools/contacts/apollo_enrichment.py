@@ -8,7 +8,8 @@ Dependencies: requests, python-dotenv
 
 API Endpoints:
   - POST https://api.apollo.io/api/v1/organizations/enrich
-  - POST https://api.apollo.io/api/v1/mixed_people/search
+  - POST https://api.apollo.io/api/v1/mixed_people/api_search  (people search, free)
+  - POST https://api.apollo.io/api/v1/people/match              (enrichment, 1 credit each)
 
 Note: Returns stub data when APOLLO_API_KEY is not set (success=True, source='stub').
 """
@@ -155,12 +156,41 @@ def enrich_company(domain: str) -> Dict[str, Any]:
         }
 
 
+MAX_ENRICH_PER_DOMAIN = 5  # Limit enrichment calls to control credit usage
+
+
+def _enrich_person(person_id: str, api_key: str) -> Optional[Dict[str, Any]]:
+    """
+    Enrich a single person via Apollo /people/match to get email & phone.
+    Costs 1 credit per call.
+
+    Returns enriched person dict or None on failure.
+    """
+    try:
+        response = requests.post(
+            f"{APOLLO_BASE_URL}/people/match",
+            headers={"Content-Type": "application/json", "X-Api-Key": api_key},
+            json={"id": person_id, "reveal_personal_emails": False},
+            timeout=30
+        )
+        if response.status_code != 200:
+            return None
+        data = response.json()
+        return data.get('person')
+    except Exception:
+        return None
+
+
 def find_decision_makers(
     domain: str,
     titles: Optional[List[str]] = None
 ) -> Dict[str, Any]:
     """
     Find decision-maker contacts at a company via Apollo.io.
+
+    Two-step process:
+      1. Search people with /mixed_people/api_search (free, no credits)
+      2. Enrich top results with /people/match to get emails (1 credit each)
 
     Args:
         domain: Company website domain
@@ -189,8 +219,9 @@ def find_decision_makers(
     search_titles = titles or DEFAULT_TITLES
 
     try:
+        # --- Step 1: Search (free, no credits) ---
         response = requests.post(
-            f"{APOLLO_BASE_URL}/people/search",
+            f"{APOLLO_BASE_URL}/mixed_people/api_search",
             headers={"Content-Type": "application/json", "X-Api-Key": api_key},
             json={
                 "q_organization_domains": domain,
@@ -237,15 +268,58 @@ def find_decision_makers(
         data = response.json()
         people = data.get('people', [])
 
+        if not people:
+            return {
+                'success': True,
+                'data': {
+                    'contacts': [],
+                    'total_found': 0,
+                    'domain': domain,
+                    'source': 'apollo'
+                },
+                'error': None
+            }
+
+        # --- Step 2: Enrich top candidates to get emails (1 credit each) ---
         contacts = []
+        enriched_count = 0
+
         for person in people:
+            person_id = person.get('id')
+            name = f"{person.get('first_name', '')} {person.get('last_name', '')}".strip()
+            title = person.get('title', '')
+            linkedin = person.get('linkedin_url')
+
+            # Try enrichment if we haven't hit the limit
+            email = None
+            phone = None
+            confidence = 0.0
+
+            if person_id and enriched_count < MAX_ENRICH_PER_DOMAIN:
+                enriched = _enrich_person(person_id, api_key)
+                if enriched:
+                    enriched_count += 1
+                    email = enriched.get('email')
+                    confidence = (enriched.get('email_confidence', 0) or 0) / 100
+                    # Phone can be in phone_numbers array or direct field
+                    phone_numbers = enriched.get('phone_numbers') or []
+                    if phone_numbers:
+                        phone = phone_numbers[0].get('sanitized_number') or phone_numbers[0].get('raw_number')
+                    elif enriched.get('phone_number'):
+                        phone = enriched.get('phone_number')
+                    # Use enriched name/linkedin if better
+                    if enriched.get('name'):
+                        name = enriched['name']
+                    if enriched.get('linkedin_url'):
+                        linkedin = enriched['linkedin_url']
+
             contacts.append({
-                'name': person.get('name', ''),
-                'title': person.get('title', ''),
-                'email': person.get('email'),
-                'linkedin_url': person.get('linkedin_url'),
-                'confidence': person.get('email_confidence', 0) / 100 if person.get('email_confidence') else 0.0,
-                'phone': person.get('phone_number')
+                'name': name,
+                'title': title,
+                'email': email,
+                'linkedin_url': linkedin,
+                'confidence': confidence,
+                'phone': phone
             })
 
         return {

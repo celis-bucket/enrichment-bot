@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "searchapi": {
+      "type": "http",
+      "url": "https://www.searchapi.io/mcp?token=2u8mb99jERkRbErzV7RjXtjt"
+    },
+    "supabase": {
+      "type": "http",
+      "url": "https://mcp.supabase.com/mcp?project_ref=cbgqwnxwwzqfetpxkomr"
+    }
+  }
+}

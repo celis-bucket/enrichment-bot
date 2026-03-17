@@ -1,0 +1,15 @@
+.git
+.env
+.env.*
+.tmp
+.claude
+.github
+frontend
+logistics-monitor
+node_modules
+__pycache__
+*.pyc
+*.csv
+credentials.json
+token.json
+Melonn guide style

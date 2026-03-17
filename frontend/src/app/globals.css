@@ -1,26 +1,40 @@
 @import "tailwindcss";
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --background: #F3F3F3;
+  --foreground: #1A1659;
 }
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+  /* Melonn Brand Colors */
+  --color-melonn-purple: #4929A1;
+  --color-melonn-purple-light: #9684E1;
+  --color-melonn-purple-50: #F0ECFA;
+  --color-melonn-purple-100: #E0D9F5;
+  --color-melonn-navy: #1A1659;
+  --color-melonn-navy-light: #2D2880;
+  --color-melonn-green: #00C97A;
+  --color-melonn-green-light: #74EBAE;
+  --color-melonn-green-50: #E6FAF1;
+  --color-melonn-mint: #74EBAE;
+  --color-melonn-cyan: #75E7EA;
+  --color-melonn-cyan-50: #E8FBFC;
+  --color-melonn-orange: #FF802F;
+  --color-melonn-orange-50: #FFF3EB;
+  --color-melonn-surface: #F3F3F3;
+
+  /* Font families */
+  --font-heading: var(--font-lato);
+  --font-body: var(--font-sora);
+  --font-sans: var(--font-sora);
+  --font-mono: var(--font-geist-mono);
 }
 
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: var(--font-body), system-ui, sans-serif;
 }

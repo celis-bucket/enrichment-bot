@@ -1,10 +1,10 @@
 """
 Batch Enrichment Runner
 
-Purpose: Process a list of URLs serially, writing results to Google Sheets.
+Purpose: Process a list of URLs serially, writing results to Supabase.
 Features:
-  - Resume from sheet (skip already-processed domains)
-  - Buffer + flush every 10 rows
+  - Resume from database (skip already-processed domains)
+  - Upsert each row immediately after processing
   - Console progress logging
   - Dry-run mode
   - CLI entry point
@@ -12,8 +12,7 @@ Features:
 Usage:
   python batch_runner.py urls.txt
   python batch_runner.py urls.txt --dry-run 5
-  python batch_runner.py urls.txt --sheet "https://docs.google.com/spreadsheets/d/..."
-  python batch_runner.py urls.txt --sheet URL --batch-id my-batch-001
+  python batch_runner.py urls.txt --batch-id my-batch-001
 """
 
 import os
@@ -28,12 +27,11 @@ _TOOLS_DIR = os.path.join(os.path.dirname(__file__), "..")
 if _TOOLS_DIR not in sys.path:
     sys.path.insert(0, _TOOLS_DIR)
 
-from models.enrichment_result import EnrichmentResult, SHEET_HEADERS
+from models.enrichment_result import EnrichmentResult
 from orchestrator.run_enrichment import run_enrichment
-from export.google_sheets_writer import (
-    get_gspread_client,
-    create_or_open_spreadsheet,
-    append_rows,
+from export.supabase_writer import (
+    get_client as get_supabase_client,
+    upsert_enrichment,
     read_existing_domains,
 )
 from core.url_normalizer import normalize_url, extract_domain
@@ -79,33 +77,72 @@ def _read_urls_from_file(file_path: str) -> List[str]:
     raise ValueError(f"Could not read {file_path} with any supported encoding")
 
 
+def _run_prediction(enrichment_result) -> Optional[Dict[str, Any]]:
+    """Run the orders estimator on an enrichment result. Returns prediction dict or None."""
+    try:
+        import pandas as pd
+
+        # Add project root to path for orders_estimator imports
+        project_root = os.path.join(os.path.dirname(__file__), "..", "..")
+        if project_root not in sys.path:
+            sys.path.insert(0, project_root)
+
+        from tools.orders_estimator.predict import load_models, predict_batch
+
+        row = {
+            "platform": enrichment_result.platform,
+            "category": enrichment_result.category,
+            "ig_followers": enrichment_result.ig_followers,
+            "ig_engagement_rate": enrichment_result.ig_engagement_rate,
+            "ig_size_score": enrichment_result.ig_size_score,
+            "ig_health_score": enrichment_result.ig_health_score,
+            "product_count": enrichment_result.product_count,
+            "avg_price": enrichment_result.avg_price,
+            "price_range_min": enrichment_result.price_range_min,
+            "price_range_max": enrichment_result.price_range_max,
+            "estimated_monthly_visits": enrichment_result.estimated_monthly_visits,
+            "brand_demand_score": enrichment_result.brand_demand_score,
+            "number_employes": enrichment_result.number_employes,
+            "meta_active_ads_count": enrichment_result.meta_active_ads_count,
+        }
+        df = pd.DataFrame([row])
+        models = load_models()
+        result_df = predict_batch(df, loaded=models)
+
+        return {
+            "predicted_orders_p10": int(result_df["predicted_orders_p10"].iloc[0]),
+            "predicted_orders_p50": int(result_df["predicted_orders_p50"].iloc[0]),
+            "predicted_orders_p90": int(result_df["predicted_orders_p90"].iloc[0]),
+            "prediction_confidence": result_df["prediction_confidence"].iloc[0],
+        }
+    except Exception as e:
+        print(f"  [WARN] Prediction failed: {e}")
+        return None
+
+
 def run_batch(
     urls: List[str],
-    spreadsheet_url: Optional[str] = None,
     batch_id: Optional[str] = None,
     dry_run: int = 0,
     enable_google_demand: bool = True,
-    buffer_size: int = 10,
-    worksheet_name: Optional[str] = None,
     country: Optional[str] = None,
+    skip_cache: bool = False,
 ) -> Dict[str, Any]:
     """
-    Process URLs serially, writing to Google Sheets every buffer_size rows.
+    Process URLs serially, upserting each result to Supabase.
 
     Args:
         urls: List of raw URLs or brand names
-        spreadsheet_url: Existing sheet URL for resume (optional)
         batch_id: Shared batch_id (auto-generated if None)
         dry_run: If > 0, process only this many companies
         enable_google_demand: If True, run Google Demand scoring
-        buffer_size: Number of rows to buffer before flushing (default: 10)
         country: Country context for brand name resolution (e.g., "Colombia")
+        skip_cache: If True, bypass cache for fresh data
 
     Returns:
-        {total, processed, succeeded, failed, skipped, sheet_url, batch_id}
+        {total, processed, succeeded, failed, skipped, batch_id}
     """
     batch_id = batch_id or str(uuid.uuid4())
-    batch_short = batch_id[:8]
 
     print(f"Batch ID: {batch_id}")
     print(f"Google Demand: {'ON' if enable_google_demand else 'OFF'}")
@@ -126,46 +163,29 @@ def run_batch(
     print(f"Total to process: {len(urls)}")
     print()
 
-    # --- Google Sheets setup ---
-    print("Connecting to Google Sheets...", end=" ", flush=True)
+    # --- Supabase setup ---
+    print("Connecting to Supabase...", end=" ", flush=True)
     try:
-        client = get_gspread_client()
-        sheet_result = create_or_open_spreadsheet(
-            client,
-            spreadsheet_url=spreadsheet_url,
-            batch_id_short=batch_short,
-            worksheet_name=worksheet_name,
-        )
-        if not sheet_result["success"]:
-            print(f"FAILED: {sheet_result['error']}")
-            return {"error": sheet_result["error"]}
-
-        worksheet = sheet_result["data"]["worksheet"]
-        sheet_url = sheet_result["data"]["sheet_url"]
-        print(f"OK")
-        print(f"Sheet: {sheet_url}")
+        sb_client = get_supabase_client()
+        print("OK")
     except Exception as e:
         print(f"FAILED: {e}")
         return {"error": str(e)}
 
     # --- Resume: read existing domains ---
-    existing_domains = set()
-    if spreadsheet_url:
-        print("Reading existing domains for resume...", end=" ", flush=True)
-        existing_domains = read_existing_domains(worksheet)
-        print(f"{len(existing_domains)} already processed")
+    print("Reading existing domains for resume...", end=" ", flush=True)
+    existing_domains = read_existing_domains(sb_client)
+    print(f"{len(existing_domains)} already processed")
 
     print("=" * 60)
 
     # --- Serial processing ---
-    buffer = []
     stats = {
         "total": len(urls),
         "processed": 0,
         "succeeded": 0,
         "failed": 0,
         "skipped": 0,
-        "sheet_url": sheet_url,
         "batch_id": batch_id,
     }
 
@@ -176,7 +196,7 @@ def run_batch(
         domain = _quick_domain(raw_url)
         if domain and domain in existing_domains:
             stats["skipped"] += 1
-            print(f"[{i+1}/{len(urls)}] SKIP {raw_url} (already in sheet)")
+            print(f"[{i+1}/{len(urls)}] SKIP {raw_url} (already in database)")
             continue
 
         t0 = time.time()
@@ -187,8 +207,12 @@ def run_batch(
             batch_id=batch_id,
             enable_google_demand=enable_google_demand,
             country=country,
+            skip_cache=skip_cache,
         )
         elapsed = time.time() - t0
+
+        # Run orders prediction
+        prediction = _run_prediction(result)
 
         # Determine success/fail
         if result.clean_url and result.domain:
@@ -207,34 +231,16 @@ def run_batch(
             parts.append(result.category)
         if result.ig_followers:
             parts.append(f"IG:{result.ig_followers:,}")
+        if prediction:
+            parts.append(f"P50:{prediction['predicted_orders_p50']}")
         print(" | ".join(parts))
 
-        # Add to buffer
-        row = result.to_row()
-        buffer.append(row)
-
-        # Flush buffer
-        if len(buffer) >= buffer_size:
-            try:
-                flush_result = append_rows(worksheet, buffer)
-                if flush_result["success"]:
-                    print(f"  >> flushed {len(buffer)} rows to sheet")
-                else:
-                    print(f"  >> ERROR flushing: {flush_result['error']}")
-            except Exception as e:
-                print(f"  >> ERROR flushing: {e}")
-            buffer = []
-
-    # Flush remaining
-    if buffer:
+        # Upsert to Supabase immediately
         try:
-            flush_result = append_rows(worksheet, buffer)
-            if flush_result["success"]:
-                print(f"  >> flushed final {len(buffer)} rows to sheet")
-            else:
-                print(f"  >> ERROR flushing final rows: {flush_result['error']}")
+            upsert_enrichment(sb_client, result, prediction)
+            print(f"  >> saved to Supabase")
         except Exception as e:
-            print(f"  >> ERROR flushing final rows: {e}")
+            print(f"  >> ERROR saving: {e}")
 
     # --- Summary ---
     total_time = time.time() - batch_start
@@ -249,7 +255,6 @@ def run_batch(
     print(f"  Time:      {total_time:.1f}s ({total_time/60:.1f}m)")
     if stats["processed"] > 0:
         print(f"  Avg/URL:   {total_time/stats['processed']:.1f}s")
-    print(f"  Sheet:     {sheet_url}")
     print(f"  Batch ID:  {batch_id}")
 
     return stats
@@ -257,16 +262,11 @@ def run_batch(
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
-        description="Batch Enrichment Runner — process URLs and write to Google Sheets"
+        description="Batch Enrichment Runner — process URLs and save to Supabase"
     )
     parser.add_argument(
         "input",
         help="Path to URL list file (one URL per line) or comma-separated URLs",
-    )
-    parser.add_argument(
-        "--sheet",
-        default=None,
-        help="Existing Google Sheet URL (enables resume from where we left off)",
     )
     parser.add_argument(
         "--dry-run",
@@ -285,20 +285,14 @@ if __name__ == "__main__":
         help="Disable Google Demand scoring (saves Serper credits)",
     )
     parser.add_argument(
-        "--buffer-size",
-        type=int,
-        default=10,
-        help="Rows to buffer before flushing to Sheets (default: 10)",
-    )
-    parser.add_argument(
-        "--worksheet",
-        default=None,
-        help="Worksheet tab name (creates new tab if it doesn't exist)",
-    )
-    parser.add_argument(
         "--country",
         default=None,
         help="Country context for brand name resolution (e.g., 'Colombia')",
+    )
+    parser.add_argument(
+        "--skip-cache",
+        action="store_true",
+        help="Bypass cache for fresh data on all steps",
     )
     args = parser.parse_args()
 
@@ -316,11 +310,9 @@ if __name__ == "__main__":
 
     stats = run_batch(
         urls=urls,
-        spreadsheet_url=args.sheet,
         batch_id=args.batch_id,
         dry_run=args.dry_run,
         enable_google_demand=not args.no_demand,
-        buffer_size=args.buffer_size,
-        worksheet_name=args.worksheet,
         country=args.country,
+        skip_cache=args.skip_cache,
     )

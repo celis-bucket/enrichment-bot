@@ -1,0 +1,41 @@
+{
+  "version": "1.0.0",
+  "feature_columns": [
+    "ig_engagement_rate",
+    "ig_size_score",
+    "ig_health_score",
+    "brand_demand_score",
+    "site_serp_coverage_score",
+    "number_employes",
+    "meta_active_ads_count",
+    "google_confidence",
+    "ig_is_verified",
+    "platform_group",
+    "has_meta_ads",
+    "is_usd_origin",
+    "log_ig_followers",
+    "log_monthly_visits",
+    "log_product_count",
+    "log_avg_price",
+    "price_range_ratio",
+    "company_age",
+    "log_fb_followers",
+    "log_tiktok_followers"
+  ],
+  "categorical_features": [
+    "platform_group"
+  ],
+  "allowed_platforms": [
+    "Shopify",
+    "WooCommerce",
+    "VTEX",
+    "Custom",
+    "PrestaShop",
+    "Magento",
+    "other"
+  ],
+  "allowed_categories": [],
+  "target_transform": "log1p",
+  "model_backend": "lightgbm",
+  "created_at": "2026-03-17T02:13:55.329185+00:00"
+}

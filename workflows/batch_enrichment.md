@@ -1,3 +1,5 @@
+> **DEPRECATED**: This workflow has been merged into [enrichment.md](enrichment.md). This file is kept for reference only.
+
 # Batch Enrichment Workflow
 
 ## Objective
@@ -38,6 +40,7 @@ python tools/orchestrator/batch_runner.py urls.txt --no-demand  # skip Google De
 | 9. Google Demand | `tools/google_demand/score_demand.py` | brand_demand_score, site_serp_coverage_score, google_confidence |
 | 10. Fulfillment | `tools/detection/detect_fulfillment_provider.py` (passive only) | fulfillment_provider, fulfillment_confidence |
 | 11. Category | `tools/ai/classify_category.py` (Claude 3.5 Sonnet, tool_use) | category, category_confidence, category_evidence |
+| 6b. META Ads | `tools/social/apify_meta_ads.py` | meta_active_ads_count |
 | 12. Apollo | `tools/contacts/apollo_enrichment.py` (OFF by default) | contact_name, contact_email, company_linkedin |
 
 ### Supporting Tools
@@ -46,7 +49,7 @@ python tools/orchestrator/batch_runner.py urls.txt --no-demand  # skip Google De
 - `tools/export/google_sheets_writer.py` — Google Sheets write + resume support
 - `tools/core/input_reader.py` — read and deduplicate plain text URL lists
 
-## Output Schema (36 columns)
+## Output Schema (39 columns)
 Defined in `tools/models/enrichment_result.py` (SHEET_HEADERS — single source of truth).
 
 | Group | Columns |
@@ -60,6 +63,7 @@ Defined in `tools/models/enrichment_result.py` (SHEET_HEADERS — single source 
 | Traffic | estimated_monthly_visits, traffic_confidence, signals_used |
 | Google Demand | brand_demand_score, site_serp_coverage_score, google_confidence |
 | Fulfillment | fulfillment_provider, fulfillment_confidence |
+| META Ads | meta_active_ads_count |
 | Apollo | contact_name, contact_email, company_linkedin |
 | Execution Meta | tool_coverage_pct, total_runtime_sec, cost_estimate_usd, workflow_execution_log |
 
@@ -102,7 +106,7 @@ Defined in `tools/models/enrichment_result.py` (SHEET_HEADERS — single source 
 ## Caching Strategy
 - Cache stored in `.tmp/cache/{domain}/{tool_name}.json`
 - Default TTL: 7 days
-- Cache keys per tool: `web_scraper`, `detect_platform`, `detect_geography`, `social_links`, `apify_instagram`, `product_catalog`, `traffic`, `google_demand`, `fulfillment`, `classify_category`
+- Cache keys per tool: `web_scraper`, `detect_platform`, `detect_geography`, `social_links`, `apify_instagram`, `meta_ads`, `product_catalog`, `traffic`, `google_demand`, `fulfillment`, `classify_category`
 - Cache is checked before each tool runs to save API credits
 - Cache can be cleared per-domain or globally via `cache_manager.py`
 
@@ -115,6 +119,7 @@ Defined in `tools/models/enrichment_result.py` (SHEET_HEADERS — single source 
 ## Rate Limits to Watch
 - **Serper API**: 2,500 queries/month free tier. Google Demand uses 3 queries/company. Budget: ~800 companies/month with demand ON
 - **Apify Instagram**: each profile fetch ~30-120s, costs credits. Only called when IG link found
+- **Apify META Ads**: each Ad Library search ~30-90s, costs credits. Uses FB URL or IG username as search term
 - **Anthropic API**: ~500 tokens/call for category classification. ~$0.30 total for 400 companies
 - **Apollo.io**: 10,000 credits/month free tier (OFF by default in batch)
 - **Google Sheets API**: 100 requests per 100 seconds (10-row buffer stays well within)

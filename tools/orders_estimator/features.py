@@ -1,9 +1,13 @@
 """
 Feature engineering and schema validation for the Orders Estimator.
 
+V4 schema: 15 model features (7 raw + 8 derived) — down from 27 in V3.
+See config.py for rationale.
+
 Handles:
 - Input schema validation (hard fail on missing required columns, soft warn on extras)
-- Derived feature computation (missing indicators, log transforms, ratios)
+- Currency detection and normalization (USD -> COP)
+- Derived feature computation (log transforms, ratios, platform grouping)
 - Full feature preparation pipeline
 """
 
@@ -12,34 +16,44 @@ import pandas as pd
 from typing import Tuple, Optional
 
 from .config import (
+    RAW_INPUT_COLUMNS,
     RAW_FEATURE_COLUMNS,
     DERIVED_FEATURE_COLUMNS,
     ALL_FEATURE_COLUMNS,
     CATEGORICAL_FEATURES,
     TARGET_COLUMN,
     ALLOWED_PLATFORMS,
-    ALLOWED_CATEGORIES,
 )
+
+import os, sys
+_TOOLS_DIR = os.path.join(os.path.dirname(__file__), "..")
+if _TOOLS_DIR not in sys.path:
+    sys.path.insert(0, _TOOLS_DIR)
+from models.enrichment_result import ALLOWED_CATEGORIES
 
 # ---------------------------------------------------------------------------
 # Currency normalization constants
 # ---------------------------------------------------------------------------
-USD_COP_RATE = 4_200   # approximate USD → COP conversion rate
-USD_THRESHOLD = 500     # avg_price below this → detected as USD (clean gap in data)
+USD_COP_RATE = 4_200   # approximate USD -> COP conversion rate
+USD_THRESHOLD = 500     # avg_price below this -> detected as USD (clean gap in data)
+
+# ---------------------------------------------------------------------------
+# Platform group mapping (collapse 7 platforms -> 3)
+# ---------------------------------------------------------------------------
+PLATFORM_GROUP_MAP = {
+    "Shopify": "shopify",
+    "VTEX": "vtex",
+    # Everything else -> "other"
+}
 
 
-def _normalize_prices(df: pd.DataFrame) -> tuple[pd.DataFrame, list[str]]:
+def _normalize_prices(df: pd.DataFrame) -> tuple[pd.DataFrame, list[str], pd.Series]:
     """
     Detect and convert USD prices to COP.
 
-    17/142 training stores have prices in USD instead of COP. This creates
-    a massive feature-space gap (USD $50 vs COP 50,000) that LightGBM
-    exploits as a dominant split, inflating price feature importance.
-
-    Detection: avg_price < 500 → USD (robust threshold: clean gap at 500-700,
-    no stores in that range, COP starts at 5,000+).
-
-    Converts avg_price, price_range_min, price_range_max to COP.
+    Returns:
+        (df, warnings, usd_mask) where usd_mask is a boolean Series
+        indicating which rows were detected as USD-priced.
     """
     warnings = []
     price_cols = ["avg_price", "price_range_min", "price_range_max"]
@@ -56,7 +70,7 @@ def _normalize_prices(df: pd.DataFrame) -> tuple[pd.DataFrame, list[str]]:
             f"(avg_price < {USD_THRESHOLD}), converted to COP at rate {USD_COP_RATE}"
         )
 
-    return df, warnings
+    return df, warnings, mask
 
 
 def validate_input_schema(
@@ -64,31 +78,24 @@ def validate_input_schema(
     require_target: bool = False,
 ) -> list[str]:
     """
-    Validate input DataFrame against the frozen feature schema.
+    Validate input DataFrame against the feature schema.
 
-    Args:
-        df: Input DataFrame (training or prediction data).
-        require_target: If True, assert TARGET_COLUMN is present and non-null.
-
-    Returns:
-        List of warning messages (empty if all OK).
-
-    Raises:
-        ValueError: If required columns are missing, category values are invalid,
-                    or target is missing/null when required.
+    Checks:
+    - Required column 'platform' exists
+    - All RAW_INPUT_COLUMNS exist (soft fail: fills missing with NaN)
+    - Platform values are known (maps unknown to 'other')
+    - Target column present and non-null when required
     """
     warnings: list[str] = []
 
     # -- Required columns --
-    required = ["platform", "category"]
-    missing_required = [c for c in required if c not in df.columns]
-    if missing_required:
-        raise ValueError(f"Missing required columns: {missing_required}")
+    if "platform" not in df.columns:
+        raise ValueError("Missing required column: platform")
 
-    # -- Check all raw feature columns exist --
-    missing_features = [c for c in RAW_FEATURE_COLUMNS if c not in df.columns]
+    # -- Check all raw input columns exist --
+    missing_features = [c for c in RAW_INPUT_COLUMNS if c not in df.columns]
     if missing_features:
-        warnings.append(f"Missing feature columns (will be treated as NaN): {missing_features}")
+        warnings.append(f"Missing input columns (will be treated as NaN): {missing_features}")
         for col in missing_features:
             df[col] = np.nan
 
@@ -98,20 +105,6 @@ def validate_input_schema(
     if unknown_platforms:
         warnings.append(f"Unknown platforms mapped to 'other': {unknown_platforms}")
         df.loc[~df["platform"].isin(known_platforms) & df["platform"].notna(), "platform"] = "other"
-
-    # -- Validate category values --
-    known_categories = set(ALLOWED_CATEGORIES)
-    if df["category"].isna().any():
-        raise ValueError(
-            f"NULL category found in {df['category'].isna().sum()} rows. "
-            "Category is required for all stores."
-        )
-    unknown_categories = set(df["category"].unique()) - known_categories
-    if unknown_categories:
-        raise ValueError(
-            f"Unknown categories found: {unknown_categories}. "
-            f"Allowed: {sorted(known_categories)}"
-        )
 
     # -- Target validation --
     if require_target:
@@ -126,8 +119,9 @@ def validate_input_schema(
             )
 
     # -- Warn about unexpected extra columns --
-    expected = set(RAW_FEATURE_COLUMNS) | {TARGET_COLUMN, "domain", "Nombre", "clean_url",
-                                            "instagram_url", "geography", "signals_used"}
+    expected = set(RAW_INPUT_COLUMNS) | {TARGET_COLUMN, "domain", "Nombre", "clean_url",
+                                          "instagram_url", "geography", "signals_used",
+                                          "category", "currency"}
     extra = set(df.columns) - expected
     if extra:
         warnings.append(f"Extra columns ignored by model: {extra}")
@@ -135,36 +129,56 @@ def validate_input_schema(
     return warnings
 
 
-def compute_derived_features(df: pd.DataFrame) -> pd.DataFrame:
+def compute_derived_features(df: pd.DataFrame, usd_mask: pd.Series = None) -> pd.DataFrame:
     """
     Compute all derived features from raw enrichment data.
 
     Does NOT modify input DataFrame. Returns a copy with derived columns added.
 
-    Derived features:
-        - has_catalog: 1 if product_count is not null
-        - has_instagram: 1 if ig_followers is not null
-        - has_employees_data: 1 if number_employes is not null
+    V4b derived features:
+        - platform_group: collapsed platform (shopify/vtex/other)
+        - has_meta_ads: 1 if meta_active_ads_count > 0
+        - is_usd_origin: 1 if store was detected as USD-priced
         - log_ig_followers: log1p(ig_followers)
         - log_monthly_visits: log1p(estimated_monthly_visits)
         - log_product_count: log1p(product_count)
-        - log_avg_price: log1p(avg_price)
-        - log_number_employes: log1p(number_employes)
+        - log_avg_price: log1p(avg_price) — after COP normalization
         - price_range_ratio: (max - min) / avg when avg > 0
+        - company_age: 2026 - founded_year (capped at 30)
+        - log_fb_followers: log1p(fb_followers)
+        - log_tiktok_followers: log1p(tiktok_followers)
     """
     df = df.copy()
 
-    # Missing indicators (binary flags)
-    df["has_catalog"] = df["product_count"].notna().astype(int)
-    df["has_instagram"] = df["ig_followers"].notna().astype(int)
-    df["has_employees_data"] = df["number_employes"].notna().astype(int)
+    # Platform grouping: Shopify, VTEX, other
+    df["platform_group"] = df["platform"].map(
+        lambda x: PLATFORM_GROUP_MAP.get(x, "other") if pd.notna(x) else "other"
+    )
 
-    # Log transforms for skewed numerics (fillna(0) before log so log1p(0)=0)
+    # Binary flags (only has_meta_ads kept — others had zero importance)
+    df["has_meta_ads"] = (df["meta_active_ads_count"].fillna(0) > 0).astype(int)
+
+    # Currency origin flag
+    if usd_mask is not None:
+        df["is_usd_origin"] = usd_mask.astype(int)
+    else:
+        df["is_usd_origin"] = 0
+
+    # Company age from founded_year (cap at 30 years)
+    current_year = 2026
+    df["company_age"] = np.where(
+        df["founded_year"].notna() & (df["founded_year"] > 1900),
+        np.minimum(current_year - df["founded_year"].fillna(0), 30),
+        np.nan,
+    )
+
+    # Log transforms for skewed numerics
     df["log_ig_followers"] = np.log1p(df["ig_followers"].fillna(0))
     df["log_monthly_visits"] = np.log1p(df["estimated_monthly_visits"].fillna(0))
     df["log_product_count"] = np.log1p(df["product_count"].fillna(0))
     df["log_avg_price"] = np.log1p(df["avg_price"].fillna(0))
-    df["log_number_employes"] = np.log1p(df["number_employes"].fillna(0))
+    df["log_fb_followers"] = np.log1p(df["fb_followers"].fillna(0))
+    df["log_tiktok_followers"] = np.log1p(df["tiktok_followers"].fillna(0))
 
     # Price range ratio: (max - min) / avg — measures catalog price diversity
     df["price_range_ratio"] = np.where(
@@ -181,7 +195,7 @@ def prepare_features(
     require_target: bool = False,
 ) -> Tuple[pd.DataFrame, Optional[pd.Series], list[str]]:
     """
-    Full feature preparation pipeline: validate, derive, select.
+    Full feature preparation pipeline: validate, normalize, derive, select.
 
     Args:
         df: Raw enrichment data (from CSV or Google Sheets).
@@ -189,25 +203,25 @@ def prepare_features(
 
     Returns:
         (X, y, warnings) where:
-            X: DataFrame with ALL_FEATURE_COLUMNS
+            X: DataFrame with ALL_FEATURE_COLUMNS (15 columns)
             y: Target series (or None if require_target=False)
             warnings: List of warning messages from validation
     """
-    # Convert "NA" strings to NaN for numeric columns
-    numeric_cols = [c for c in RAW_FEATURE_COLUMNS if c not in CATEGORICAL_FEATURES]
+    # Convert string values to numeric for raw input columns
+    numeric_cols = [c for c in RAW_INPUT_COLUMNS if c not in ("platform",)]
     for col in numeric_cols:
         if col in df.columns:
             df[col] = pd.to_numeric(df[col], errors="coerce")
 
-    # Normalize USD prices to COP (must happen before validation/derived features)
-    df, price_warnings = _normalize_prices(df)
+    # Normalize USD prices to COP (must happen before derived features)
+    df, price_warnings, usd_mask = _normalize_prices(df)
 
     # Validate
     warnings = validate_input_schema(df, require_target=require_target)
     warnings.extend(price_warnings)
 
     # Derive features
-    df = compute_derived_features(df)
+    df = compute_derived_features(df, usd_mask=usd_mask)
 
     # Extract target if needed
     y = None

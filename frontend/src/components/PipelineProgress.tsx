@@ -7,11 +7,11 @@ interface PipelineProgressProps {
 }
 
 const STATUS_CONFIG = {
-  running: { icon: '⏳', color: 'text-blue-600', bg: 'bg-blue-50', label: 'Running' },
-  ok:      { icon: '✓',  color: 'text-green-600', bg: 'bg-green-50', label: 'Done' },
-  warn:    { icon: '⚠',  color: 'text-yellow-600', bg: 'bg-yellow-50', label: 'Warning' },
+  running: { icon: '⏳', color: 'text-melonn-purple', bg: 'bg-melonn-purple-50', label: 'Running' },
+  ok:      { icon: '✓',  color: 'text-melonn-green', bg: 'bg-melonn-green-50', label: 'Done' },
+  warn:    { icon: '⚠',  color: 'text-melonn-orange', bg: 'bg-melonn-orange-50', label: 'Warning' },
   fail:    { icon: '✗',  color: 'text-red-600', bg: 'bg-red-50', label: 'Failed' },
-  skip:    { icon: '–',  color: 'text-gray-400', bg: 'bg-gray-50', label: 'Skipped' },
+  skip:    { icon: '–',  color: 'text-melonn-navy/40', bg: 'bg-melonn-surface', label: 'Skipped' },
 };
 
 function formatDuration(ms?: number): string {
@@ -31,12 +31,12 @@ export function PipelineProgress({ steps }: PipelineProgressProps) {
   const hasRunning = steps.some((s) => s.status === 'running');
 
   return (
-    <div className="w-full max-w-2xl mx-auto">
-      <div className="bg-white rounded-lg border border-gray-200 shadow-sm p-4">
+    <div className="w-full max-w-3xl mx-auto">
+      <div className="bg-white rounded-2xl border border-melonn-purple-50 shadow-sm p-5">
         <div className="flex items-center justify-between mb-3">
-          <h3 className="text-sm font-semibold text-gray-700">Pipeline Progress</h3>
+          <h3 className="text-sm font-semibold text-melonn-navy font-heading">Pipeline Progress</h3>
           {totalMs > 0 && (
-            <span className="text-xs text-gray-400">{formatDuration(totalMs)} elapsed</span>
+            <span className="text-xs text-melonn-navy/40 font-mono">{formatDuration(totalMs)} elapsed</span>
           )}
         </div>
 
@@ -46,7 +46,7 @@ export function PipelineProgress({ steps }: PipelineProgressProps) {
             return (
               <div
                 key={`${step.step}-${i}`}
-                className={`flex items-center gap-3 px-3 py-1.5 rounded ${config.bg}`}
+                className={`flex items-center gap-3 px-3 py-1.5 rounded-xl ${config.bg}`}
               >
                 <span className={`w-5 text-center font-bold ${config.color}`}>
                   {step.status === 'running' ? (
@@ -59,7 +59,7 @@ export function PipelineProgress({ steps }: PipelineProgressProps) {
                   {capitalizeStep(step.step)}
                 </span>
                 {step.duration_ms !== undefined && step.duration_ms > 0 && (
-                  <span className="text-xs text-gray-400">{formatDuration(step.duration_ms)}</span>
+                  <span className="text-xs text-melonn-navy/40 font-mono">{formatDuration(step.duration_ms)}</span>
                 )}
               </div>
             );
@@ -68,9 +68,9 @@ export function PipelineProgress({ steps }: PipelineProgressProps) {
 
         {hasRunning && (
           <div className="mt-3 flex items-center gap-2">
-            <div className="h-1 flex-1 bg-gray-100 rounded-full overflow-hidden">
+            <div className="h-1.5 flex-1 bg-melonn-surface rounded-full overflow-hidden">
               <div
-                className="h-full bg-blue-500 rounded-full transition-all duration-500 animate-pulse"
+                className="h-full bg-gradient-to-r from-melonn-purple to-melonn-green rounded-full transition-all duration-500 animate-pulse"
                 style={{ width: '100%' }}
               />
             </div>

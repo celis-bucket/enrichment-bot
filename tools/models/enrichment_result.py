@@ -6,8 +6,9 @@ Every enrichment run returns an EnrichmentResult dataclass.
 SHEET_HEADERS defines the Google Sheets column order.
 """
 
+import json
 from dataclasses import dataclass, field, fields, asdict
-from typing import Optional
+from typing import Optional, List, Dict, Any
 from uuid import uuid4
 
 
@@ -61,6 +62,10 @@ SHEET_HEADERS = [
     "ig_engagement_rate",
     "ig_size_score",
     "ig_health_score",
+    "ig_is_verified",
+    # SOCIAL (Facebook & TikTok)
+    "fb_followers",
+    "tiktok_followers",
     # CATALOG
     "product_count",
     "avg_price",
@@ -78,11 +83,14 @@ SHEET_HEADERS = [
     # FULFILLMENT
     "fulfillment_provider",
     "fulfillment_confidence",
-    # APOLLO (null for Phase 1)
+    # META ADS
+    "meta_active_ads_count",
+    # APOLLO
     "contact_name",
     "contact_email",
     "company_linkedin",
     "number_employes",
+    "founded_year",
     # EXECUTION META
     "tool_coverage_pct",
     "total_runtime_sec",
@@ -121,6 +129,11 @@ class EnrichmentResult:
     ig_engagement_rate: Optional[float] = None
     ig_size_score: Optional[int] = None         # 0-100
     ig_health_score: Optional[int] = None       # 0-100
+    ig_is_verified: Optional[int] = None        # 0 or 1
+
+    # SOCIAL (Facebook & TikTok)
+    fb_followers: Optional[int] = None
+    tiktok_followers: Optional[int] = None
 
     # CATALOG
     product_count: Optional[int] = None
@@ -143,11 +156,16 @@ class EnrichmentResult:
     fulfillment_provider: Optional[str] = None
     fulfillment_confidence: Optional[float] = None    # 0-1
 
-    # APOLLO (null for Phase 1)
+    # META ADS
+    meta_active_ads_count: Optional[int] = None       # active ads in Meta Ad Library; None = not found
+
+    # APOLLO
     contact_name: Optional[str] = None
     contact_email: Optional[str] = None
     company_linkedin: Optional[str] = None
     number_employes: Optional[int] = None          # Apollo estimated_num_employees; None = not found
+    founded_year: Optional[int] = None             # Apollo org founded_year; None = not found
+    contacts_list: Optional[List[Dict[str, Any]]] = None  # Full contacts list (not exported to Sheet)
 
     # EXECUTION META
     tool_coverage_pct: Optional[float] = None    # 0-1
@@ -158,6 +176,32 @@ class EnrichmentResult:
     def to_dict(self) -> dict:
         """Convert to flat dict."""
         return asdict(self)
+
+    def to_supabase_dict(self, prediction: dict = None) -> dict:
+        """Convert to dict matching the Supabase enriched_companies schema.
+
+        Args:
+            prediction: Optional dict with predicted_orders_p10/p50/p90 and prediction_confidence.
+
+        Returns:
+            Dict ready for Supabase upsert (None values stripped, JSON fields parsed).
+        """
+        d = self.to_dict()
+        # Parse workflow_execution_log from JSON string to list for JSONB column
+        wlog = d.get("workflow_execution_log")
+        if isinstance(wlog, str):
+            try:
+                d["workflow_execution_log"] = json.loads(wlog)
+            except (json.JSONDecodeError, TypeError):
+                d["workflow_execution_log"] = []
+        # Merge prediction fields if provided
+        if prediction:
+            d["predicted_orders_p10"] = prediction.get("predicted_orders_p10")
+            d["predicted_orders_p50"] = prediction.get("predicted_orders_p50")
+            d["predicted_orders_p90"] = prediction.get("predicted_orders_p90")
+            d["prediction_confidence"] = prediction.get("prediction_confidence")
+        # Strip None values so Supabase uses column defaults
+        return {k: v for k, v in d.items() if v is not None}
 
     def to_row(self) -> list:
         """Convert to a list matching SHEET_HEADERS order. None -> empty string."""
@@ -174,8 +218,12 @@ class EnrichmentResult:
         return row
 
 
-# Sanity check: field count must match header count
-assert len(SHEET_HEADERS) == len(fields(EnrichmentResult)), (
-    f"SHEET_HEADERS ({len(SHEET_HEADERS)}) != EnrichmentResult fields ({len(fields(EnrichmentResult))}). "
+# Fields not exported to Google Sheets (nested/non-scalar)
+_NON_SHEET_FIELDS = {"contacts_list"}
+
+# Sanity check: field count (minus non-sheet fields) must match header count
+_sheet_field_count = len([f for f in fields(EnrichmentResult) if f.name not in _NON_SHEET_FIELDS])
+assert len(SHEET_HEADERS) == _sheet_field_count, (
+    f"SHEET_HEADERS ({len(SHEET_HEADERS)}) != EnrichmentResult sheet fields ({_sheet_field_count}). "
     "They must stay in sync."
 )

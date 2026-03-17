@@ -279,6 +279,48 @@ def extract_social_links_from_html(
         }
 
 
+def search_facebook_via_serper(brand_name: str, domain: Optional[str] = None) -> Optional[Dict[str, str]]:
+    """
+    Search for a brand's Facebook page using Serper (Google Search).
+    Fallback when HTML extraction doesn't find a Facebook link.
+
+    Args:
+        brand_name: The brand/company name to search for
+        domain: Optional domain for more precise search
+
+    Returns:
+        Dict with 'url' and 'page_name', or None if not found
+    """
+    try:
+        from core.google_search import google_search
+    except ImportError:
+        try:
+            sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
+            from core.google_search import google_search
+        except ImportError:
+            return None
+
+    query = f'{brand_name} facebook' if brand_name else f'{domain} facebook'
+
+    result = google_search(query, num_results=5)
+    if not result.get('success'):
+        return None
+
+    organic = result.get('data', {}).get('organic', [])
+    for item in organic:
+        link = item.get('link', '')
+        title = item.get('title', '')
+        # Match facebook.com profile/page URLs
+        if re.match(r'https?://(?:www\.)?facebook\.com/', link):
+            # Extract page name from search result title (e.g. "SereniVida Co - Facebook")
+            page_name = re.sub(r'\s*[-–|].*(?:Facebook|Meta|FB).*$', '', title, flags=re.IGNORECASE).strip()
+            if not page_name:
+                page_name = brand_name
+            return {'url': link, 'page_name': page_name}
+
+    return None
+
+
 def search_instagram_via_serper(brand_name: str, domain: Optional[str] = None) -> Optional[str]:
     """
     Search for a brand's Instagram URL using Serper (Google Search).

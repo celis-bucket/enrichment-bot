@@ -1,0 +1,30 @@
+{
+  "version": "1.0.0",
+  "trained_at": "2026-03-17T02:13:55.258998+00:00",
+  "n_samples": 142,
+  "n_features": 20,
+  "target_max": 32832.0,
+  "target_min": 0.0,
+  "target_median": 303.5,
+  "cv_wape_mean": 0.7788981009113805,
+  "cv_spearman_mean": 0.6531667085083408,
+  "cv_bucket_exact": 0.43128078817733984,
+  "cv_bucket_within_1": 0.9060755336617403,
+  "model_backend": "lightgbm",
+  "lgbm_params": {
+    "n_estimators": 500,
+    "learning_rate": 0.1,
+    "max_depth": 3,
+    "num_leaves": 7,
+    "reg_lambda": 20,
+    "reg_alpha": 1.0,
+    "min_child_samples": 5,
+    "subsample": 0.8,
+    "colsample_bytree": 0.8,
+    "random_state": 42,
+    "verbose": -1,
+    "n_jobs": 1,
+    "early_stopping_rounds": 50
+  },
+  "note": "V4b schema (20 features) with conservative params (depth=3, lambda=20) to control overfitting"
+}

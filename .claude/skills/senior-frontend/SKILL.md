@@ -207,3 +207,173 @@ Check the comprehensive troubleshooting section in `references/frontend_best_pra
 - Workflow Guide: `references/nextjs_optimization_guide.md`
 - Technical Guide: `references/frontend_best_practices.md`
 - Tool Scripts: `scripts/` directory
+
+---
+
+# Melonn Brand Design System
+
+ALWAYS apply these guidelines when building or styling frontend UI for this project.
+
+## Color Palette
+
+### Primary Colors
+| Token | Hex | Tailwind Class | Usage |
+|---|---|---|---|
+| Deep Purple | `#4929A1` | `melonn-purple` | Primary brand, headers, links, primary actions |
+| Dark Navy | `#1A1659` | `melonn-navy` | All text on light backgrounds |
+| Vibrant Green | `#00C97A` | `melonn-green` | CTAs, success states, positive indicators |
+
+### Supporting Colors
+| Token | Hex | Tailwind Class | Usage |
+|---|---|---|---|
+| Light Purple | `#9684E1` | `melonn-purple-light` | Hover states, secondary elements |
+| Mint | `#74EBAE` | `melonn-mint` | Success backgrounds, highlights |
+| Cyan | `#75E7EA` | `melonn-cyan` | Info states, data viz accents |
+| Orange | `#FF802F` | `melonn-orange` | Warnings, attention |
+
+### Tints (auto-generated)
+| Token | Hex | Usage |
+|---|---|---|
+| `melonn-purple-50` | `#F0ECFA` | Light purple backgrounds |
+| `melonn-purple-100` | `#E0D9F5` | Borders, input focus rings |
+| `melonn-green-50` | `#E6FAF1` | Success backgrounds |
+| `melonn-cyan-50` | `#E8FBFC` | Info backgrounds |
+| `melonn-orange-50` | `#FFF3EB` | Warning backgrounds |
+| `melonn-surface` | `#F3F3F3` | Page background |
+
+## Tailwind CSS v4 Theme (globals.css)
+
+```css
+@theme inline {
+  --color-melonn-purple: #4929A1;
+  --color-melonn-purple-light: #9684E1;
+  --color-melonn-purple-50: #F0ECFA;
+  --color-melonn-purple-100: #E0D9F5;
+  --color-melonn-navy: #1A1659;
+  --color-melonn-navy-light: #2D2880;
+  --color-melonn-green: #00C97A;
+  --color-melonn-green-light: #74EBAE;
+  --color-melonn-green-50: #E6FAF1;
+  --color-melonn-mint: #74EBAE;
+  --color-melonn-cyan: #75E7EA;
+  --color-melonn-cyan-50: #E8FBFC;
+  --color-melonn-orange: #FF802F;
+  --color-melonn-orange-50: #FFF3EB;
+  --color-melonn-surface: #F3F3F3;
+  --font-heading: var(--font-lato);
+  --font-body: var(--font-sora);
+}
+```
+
+## Typography
+
+- **Headings**: Lato, weight 700, `font-heading`
+- **Body**: Sora, weight 400-600, `font-body`
+- **Monospace**: Geist Mono (for logs, durations, code)
+- Load via `next/font/google` in layout.tsx
+
+### Scale
+| Element | Font | Size | Weight | Color |
+|---|---|---|---|---|
+| Page Title | Lato | `text-xl` | 700 | `text-white` (on navy header) |
+| Card Title | Lato | `text-sm` | 600 | `text-melonn-navy` |
+| Body | Sora | `text-sm` | 400 | `text-melonn-navy` |
+| Caption | Sora | `text-xs` | 400 | `text-melonn-navy/60` |
+| Big Number | Lato | `text-3xl` | 700 | `text-melonn-navy` |
+
+## Component Patterns
+
+### Buttons
+```html
+<!-- Primary CTA -->
+<button class="px-6 py-3 bg-melonn-green text-white font-semibold rounded-full
+  hover:bg-melonn-green/90 disabled:bg-melonn-surface disabled:text-melonn-navy/40
+  transition-colors font-heading">
+  Analyze
+</button>
+
+<!-- Secondary -->
+<button class="px-6 py-3 bg-white text-melonn-purple font-semibold rounded-full
+  border-2 border-melonn-purple hover:bg-melonn-purple-50 transition-colors font-heading">
+  Cancel
+</button>
+
+<!-- Ghost -->
+<button class="px-4 py-2 text-melonn-purple font-medium rounded-lg
+  hover:bg-melonn-purple-50 transition-colors text-sm">
+  Show details
+</button>
+```
+
+### Cards
+```html
+<div class="bg-white rounded-2xl border border-melonn-purple-50 shadow-sm p-5">
+  <h3 class="text-sm font-semibold text-melonn-navy font-heading mb-3">Title</h3>
+  <!-- Content -->
+</div>
+```
+
+### Badges
+```html
+<!-- Brand -->
+<span class="text-xs px-3 py-1 bg-melonn-purple-50 text-melonn-purple rounded-full font-medium">Shopify</span>
+<!-- Success -->
+<span class="text-xs px-3 py-1 bg-melonn-green-50 text-melonn-green rounded-full font-medium">High</span>
+<!-- Warning -->
+<span class="text-xs px-3 py-1 bg-melonn-orange-50 text-melonn-orange rounded-full font-medium">Medium</span>
+<!-- Error -->
+<span class="text-xs px-3 py-1 bg-red-50 text-red-600 rounded-full font-medium">Low</span>
+```
+
+### Inputs
+```html
+<input class="w-full px-4 py-3 border-2 border-melonn-purple-100 rounded-xl
+  focus:outline-none focus:ring-2 focus:ring-melonn-purple/30 focus:border-melonn-purple
+  text-melonn-navy placeholder:text-melonn-navy/40 font-body" />
+```
+
+### Score Indicators
+- Score >= 70: `bg-melonn-green-50 text-melonn-green border-melonn-green/20`
+- Score 40-69: `bg-melonn-orange-50 text-melonn-orange border-melonn-orange/20`
+- Score < 40: `bg-red-50 text-red-600 border-red-200`
+
+### Progress Bar
+```html
+<div class="h-1.5 bg-melonn-surface rounded-full overflow-hidden">
+  <div class="h-full bg-gradient-to-r from-melonn-purple to-melonn-green rounded-full" />
+</div>
+```
+
+## Semantic Color Mapping
+| Semantic | Melonn Token |
+|---|---|
+| Success/OK | `melonn-green` / `melonn-green-50` |
+| Warning | `melonn-orange` / `melonn-orange-50` |
+| Error/Fail | `red-600` / `red-50` (keep standard red) |
+| Info | `melonn-cyan` / `melonn-cyan-50` |
+| Running/Active | `melonn-purple` / `melonn-purple-50` |
+| Disabled/Skip | `melonn-navy/40` / `melonn-surface` |
+
+## Layout Rules
+- Page background: `bg-melonn-surface`
+- Max content width: `max-w-5xl`
+- Cards: `rounded-2xl`, nested elements: `rounded-xl`
+- Buttons: `rounded-full` (pill shape)
+- Results grid: `grid grid-cols-1 md:grid-cols-2 gap-4`
+- Card padding: `p-5`
+- Card gap: `gap-4`
+
+## Do's
+- Use `melonn-green` for all primary CTAs and positive indicators
+- Use `melonn-purple` as the dominant brand color for headers and links
+- Use `melonn-navy` for ALL text on light backgrounds
+- Keep cards white with subtle `border-melonn-purple-50`
+- Use pill shapes (`rounded-full`) for buttons and badges
+- Use the gradient `from-melonn-purple to-melonn-green` sparingly for emphasis
+
+## Don'ts
+- Do NOT use `text-gray-*` for text -- use `text-melonn-navy` with opacity
+- Do NOT use `bg-blue-600` for buttons -- use `melonn-green` or `melonn-purple`
+- Do NOT use `rounded-lg` for cards -- use `rounded-2xl`
+- Do NOT use dark mode -- light-mode only
+- Do NOT use Geist font for UI text -- use Lato (headings) and Sora (body)

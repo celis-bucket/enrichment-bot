@@ -23,12 +23,12 @@ urllib3==2.1.0
 # Image processing (for image analysis)
 Pillow==10.2.0
 
-# Google APIs
-google-auth==2.27.0
-google-auth-oauthlib==1.2.0
-google-auth-httplib2==0.2.0
-google-api-python-client==2.116.0
-gspread==6.0.0
+# Google APIs (DEPRECATED — kept for backward compat with google_sheets_writer.py)
+# google-auth==2.27.0
+# google-auth-oauthlib==1.2.0
+# google-auth-httplib2==0.2.0
+# google-api-python-client==2.116.0
+# gspread==6.0.0
 
 # Data processing
 pandas==2.2.0

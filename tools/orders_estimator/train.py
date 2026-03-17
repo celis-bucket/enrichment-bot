@@ -45,8 +45,6 @@ _TOOLS_DIR = os.path.join(os.path.dirname(__file__), "..")
 if _TOOLS_DIR not in sys.path:
     sys.path.insert(0, _TOOLS_DIR)
 
-from models.enrichment_result import ALLOWED_CATEGORIES
-
 
 def load_training_data(csv_path: str) -> pd.DataFrame:
     """
@@ -174,7 +172,7 @@ def save_artifacts(
         "feature_columns": ALL_FEATURE_COLUMNS,
         "categorical_features": CATEGORICAL_FEATURES,
         "allowed_platforms": ALLOWED_PLATFORMS,
-        "allowed_categories": ALLOWED_CATEGORIES,
+        "allowed_categories": [],  # category removed from model in V4
         "target_transform": "log1p",
         "model_backend": "lightgbm",
         "created_at": datetime.now(timezone.utc).isoformat(),

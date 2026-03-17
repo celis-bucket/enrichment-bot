@@ -2,37 +2,14 @@
  * API client for the Enrichment Agent backend
  */
 
-import type { EnrichmentResults, EnrichmentV2Results, PipelineStep, DuplicateCheckResult } from './types';
+import type {
+  EnrichmentV2Results,
+  PipelineStep,
+  DuplicateCheckResult,
+  CompanyListResponse,
+} from './types';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
-
-// ===== V1 (legacy) =====
-
-export async function analyzeUrl(url: string): Promise<EnrichmentResults> {
-  const response = await fetch(`${API_BASE}/api/v1/enrichment/analyze-sync`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ url }),
-  });
-
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({ detail: 'Analysis failed' }));
-    throw new Error(error.detail || `HTTP ${response.status}: Analysis failed`);
-  }
-
-  return response.json();
-}
-
-export async function checkHealth(): Promise<boolean> {
-  try {
-    const response = await fetch(`${API_BASE}/health`);
-    return response.ok;
-  } catch {
-    return false;
-  }
-}
-
-// ===== V2 (SSE Streaming) =====
 
 export async function analyzeUrlV2(
   url: string,
@@ -106,4 +83,37 @@ export async function checkDuplicate(domain: string): Promise<DuplicateCheckResu
   } catch {
     return { exists: false };
   }
+}
+
+export async function getCompanies(params?: {
+  page?: number;
+  limit?: number;
+  search?: string;
+  category?: string;
+  geography?: string;
+}): Promise<CompanyListResponse> {
+  const searchParams = new URLSearchParams();
+  if (params?.page) searchParams.set('page', String(params.page));
+  if (params?.limit) searchParams.set('limit', String(params.limit));
+  if (params?.search) searchParams.set('search', params.search);
+  if (params?.category) searchParams.set('category', params.category);
+  if (params?.geography) searchParams.set('geography', params.geography);
+
+  const response = await fetch(
+    `${API_BASE}/api/v2/enrichment/companies?${searchParams.toString()}`
+  );
+  if (!response.ok) {
+    return { companies: [], total: 0, page: 1, limit: 25 };
+  }
+  return response.json();
+}
+
+export async function getCompany(domain: string): Promise<EnrichmentV2Results> {
+  const response = await fetch(
+    `${API_BASE}/api/v2/enrichment/companies/${encodeURIComponent(domain)}`
+  );
+  if (!response.ok) {
+    throw new Error(`Company not found: ${domain}`);
+  }
+  return response.json();
 }

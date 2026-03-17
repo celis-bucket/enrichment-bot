@@ -1,13 +1,13 @@
 """
-Apify Instagram Scraper Integration
+SearchAPI Instagram Profile Integration
 
-Purpose: Get Instagram metrics using Apify's Instagram scraper
+Purpose: Get Instagram metrics using SearchAPI's instagram_profile engine
 Inputs: Instagram username or URL
 Outputs: Follower count, posts, engagement metrics
 Dependencies: requests, os, datetime
 
-API Endpoint: https://api.apify.com/v2/acts/apify~instagram-scraper/run-sync-get-dataset-items
-Method: POST
+API Endpoint: https://www.searchapi.io/api/v1/search?engine=instagram_profile
+Method: GET
 """
 
 import os
@@ -58,12 +58,12 @@ def get_instagram_metrics(
     posts_limit: int = 20
 ) -> Dict[str, Any]:
     """
-    Get Instagram profile metrics using Apify API.
+    Get Instagram profile metrics using SearchAPI.
 
     Args:
         username_or_url: Instagram username or profile URL
-        include_posts: Whether to fetch recent posts (default: True)
-        posts_limit: Number of recent posts to fetch (default: 20)
+        include_posts: Whether to use posts for engagement calculation (default: True)
+        posts_limit: Not used directly (SearchAPI returns ~12 posts), kept for API compat
 
     Returns:
         Dict with:
@@ -81,121 +81,82 @@ def get_instagram_metrics(
                 'error': f'Invalid Instagram username or URL: {username_or_url}'
             }
 
-        # Get API credentials from environment
-        api_token = os.getenv('APIFY_API_TOKEN')
-        if not api_token:
+        # Get API key from environment
+        api_key = os.getenv('SEARCHAPI_API_KEY')
+        if not api_key:
             return {
                 'success': False,
                 'data': {},
-                'error': 'APIFY_API_TOKEN not found in environment variables'
+                'error': 'SEARCHAPI_API_KEY not found in environment variables'
             }
 
-        # Get endpoint URL (allow override via env)
-        endpoint = os.getenv(
-            'APIFY_INSTAGRAM_ENDPOINT',
-            'https://api.apify.com/v2/acts/apify~instagram-scraper/run-sync-get-dataset-items'
+        # Call SearchAPI instagram_profile engine
+        response = requests.get(
+            'https://www.searchapi.io/api/v1/search',
+            params={
+                'engine': 'instagram_profile',
+                'username': username,
+                'api_key': api_key,
+            },
+            timeout=30,
         )
 
-        # Build full URL with token
-        url = f"{endpoint}?token={api_token}"
-
-        # Build Instagram profile URL
-        instagram_url = f"https://www.instagram.com/{username}/"
-
-        # Prepare request payload using directUrls approach
-        payload = {
-            "directUrls": [instagram_url],
-            "resultsType": "details",
-            "searchLimit": 1
-        }
-
-        # Make API request
-        headers = {
-            'Content-Type': 'application/json',
-            'Accept': 'application/json'
-        }
-
-        response = requests.post(
-            url,
-            json=payload,
-            headers=headers,
-            timeout=120  # Apify can take time to scrape
-        )
-
-        # Check response status (200 OK or 201 Created are both valid)
-        if response.status_code not in [200, 201]:
+        if response.status_code != 200:
             return {
                 'success': False,
                 'data': {},
-                'error': f'Apify API error (HTTP {response.status_code}): {response.text}'
+                'error': f'SearchAPI error (HTTP {response.status_code}): {response.text[:300]}'
             }
 
-        # Parse response
         data = response.json()
 
-        # Check for error in response body (Apify may return 201 with error)
-        if isinstance(data, list) and len(data) > 0:
-            first_item = data[0]
-            if isinstance(first_item, dict) and first_item.get('error'):
-                return {
-                    'success': False,
-                    'data': {},
-                    'error': f"Apify error: {first_item.get('error')} - {first_item.get('errorDescription', '')}"
-                }
-
-        # Apify returns array of results
-        if not data or len(data) == 0:
+        # Check for error in response
+        if data.get('error'):
             return {
                 'success': False,
                 'data': {},
-                'error': f'No data returned for username: {username}'
+                'error': f"SearchAPI: {data['error']}"
             }
 
-        # Get first result (profile data)
-        profile = data[0] if isinstance(data, list) else data
+        profile = data.get('profile', {})
+        if not profile:
+            return {
+                'success': False,
+                'data': {},
+                'error': f'No profile data returned for username: {username}'
+            }
 
-        # Extract metrics - handle both old and new field names
-        followers = profile.get('followersCount') or profile.get('followers', 0)
-        following = profile.get('followsCount') or profile.get('following', 0)
-        posts_count = profile.get('postsCount') or profile.get('posts', 0)
+        # Extract profile metrics
+        followers = profile.get('followers', 0)
+        following = profile.get('following', 0)
+        posts_count = profile.get('posts', 0)
+        full_name = profile.get('name', '')
+        biography = profile.get('bio', '')
+        profile_pic = profile.get('avatar_hd') or profile.get('avatar', '')
+        is_verified = profile.get('is_verified', False)
+        is_private = False  # SearchAPI only returns public profiles
 
-        # Profile info
-        full_name = profile.get('fullName') or profile.get('full_name', '')
-        biography = profile.get('biography') or profile.get('bio', '')
-        profile_pic = profile.get('profilePicUrl') or profile.get('profile_pic_url', '')
-        is_verified = profile.get('verified', False)
-        is_private = profile.get('private') or profile.get('isPrivate', False)
-
-        # Calculate engagement metrics from recent posts
+        # Calculate engagement metrics from posts
         engagement_rate = 0.0
         posts_last_30_days = 0
         total_engagement = 0
 
-        # Check for posts in different possible field names
-        posts_data = profile.get('latestPosts') or profile.get('posts') or profile.get('recentPosts') or []
+        posts_data = data.get('posts', [])
 
         if include_posts and posts_data and isinstance(posts_data, list):
             cutoff_date = datetime.now() - timedelta(days=30)
 
             for post in posts_data:
-                # Get post timestamp (try multiple field names)
-                timestamp = post.get('timestamp') or post.get('taken_at') or post.get('takenAt')
-                if timestamp:
+                iso_date = post.get('iso_date')
+                if iso_date:
                     try:
-                        if isinstance(timestamp, str):
-                            post_date = datetime.fromisoformat(timestamp.replace('Z', '+00:00'))
-                        else:
-                            # Unix timestamp
-                            post_date = datetime.fromtimestamp(timestamp)
-
+                        post_date = datetime.fromisoformat(iso_date.replace('Z', '+00:00'))
                         if post_date.replace(tzinfo=None) > cutoff_date:
                             posts_last_30_days += 1
-
-                            # Calculate engagement for this post
-                            likes = post.get('likesCount') or post.get('likes', 0)
-                            comments = post.get('commentsCount') or post.get('comments', 0)
+                            likes = post.get('likes', 0)
+                            comments = post.get('comments', 0)
                             total_engagement += (likes + comments)
-                    except:
+                    except (ValueError, TypeError):
                         pass
 
             # Calculate average engagement rate
@@ -227,14 +188,14 @@ def get_instagram_metrics(
         return {
             'success': False,
             'data': {},
-            'error': 'Apify API request timeout (>60s)'
+            'error': 'SearchAPI request timeout (>30s)'
         }
 
     except requests.exceptions.RequestException as e:
         return {
             'success': False,
             'data': {},
-            'error': f'Apify API request failed: {str(e)}'
+            'error': f'SearchAPI request failed: {str(e)}'
         }
 
     except Exception as e:
@@ -242,6 +203,118 @@ def get_instagram_metrics(
             'success': False,
             'data': {},
             'error': f'Instagram scraping error: {str(e)}'
+        }
+
+
+def get_instagram_posts(
+    username_or_url: str,
+    limit: int = 12,
+) -> Dict[str, Any]:
+    """
+    Get recent posts from an Instagram profile via SearchAPI.
+
+    Args:
+        username_or_url: Instagram username or profile URL
+        limit: Maximum number of posts to return (default: 12)
+
+    Returns:
+        Dict with:
+            - success: bool
+            - data: dict with username, is_private, followers, and posts list
+            - error: str or None
+    """
+    try:
+        username = extract_instagram_username(username_or_url)
+        if not username:
+            return {
+                'success': False,
+                'data': {},
+                'error': f'Invalid Instagram username or URL: {username_or_url}'
+            }
+
+        api_key = os.getenv('SEARCHAPI_API_KEY')
+        if not api_key:
+            return {
+                'success': False,
+                'data': {},
+                'error': 'SEARCHAPI_API_KEY not found in environment variables'
+            }
+
+        response = requests.get(
+            'https://www.searchapi.io/api/v1/search',
+            params={
+                'engine': 'instagram_profile',
+                'username': username,
+                'api_key': api_key,
+            },
+            timeout=30,
+        )
+
+        if response.status_code != 200:
+            return {
+                'success': False,
+                'data': {},
+                'error': f'SearchAPI error (HTTP {response.status_code}): {response.text[:300]}'
+            }
+
+        data = response.json()
+
+        if data.get('error'):
+            return {
+                'success': False,
+                'data': {},
+                'error': f"SearchAPI: {data['error']}"
+            }
+
+        profile = data.get('profile', {})
+        followers = profile.get('followers', 0)
+
+        raw_posts = data.get('posts', [])
+        posts = []
+        for post in raw_posts[:limit]:
+            post_id = post.get('id', '')
+            permalink = post.get('permalink', '')
+            if not post_id:
+                continue
+            posts.append({
+                'shortCode': post_id,
+                'url': permalink or f'https://www.instagram.com/p/{post_id}/',
+                'timestamp': post.get('iso_date', ''),
+                'likesCount': post.get('likes', 0),
+                'commentsCount': post.get('comments', 0),
+                'caption': (post.get('caption') or '')[:200],
+            })
+
+        return {
+            'success': True,
+            'data': {
+                'username': username,
+                'is_private': False,
+                'followers': followers,
+                'posts': posts,
+            },
+            'error': None
+        }
+
+    except requests.exceptions.Timeout:
+        return {
+            'success': False,
+            'data': {},
+            'error': 'SearchAPI request timeout (>30s)'
+        }
+
+    except requests.exceptions.RequestException as e:
+        return {
+            'success': False,
+            'data': {},
+            'error': f'SearchAPI request failed: {str(e)}'
+        }
+
+    except Exception as e:
+        return {
+            'success': False,
+            'data': {},
+            'error': f'Instagram posts scraping error: {str(e)}'
         }
 
 
@@ -292,13 +365,11 @@ if __name__ == '__main__':
     import sys
 
     if len(sys.argv) > 1:
-        # Test with provided username
         username = sys.argv[1]
     else:
-        # Default test username
-        username = 'instagram'  # Instagram's official account
+        username = 'nike'
 
-    print("Apify Instagram Scraper Test")
+    print("SearchAPI Instagram Profile Test")
     print("=" * 60)
     print(f"Testing with: {username}\n")
 

@@ -83,21 +83,18 @@ def compute_confidence(row: pd.Series) -> str:
     """
     Assign confidence level based on available feature coverage.
 
-    HIGH:   has catalog + has Instagram + has traffic
+    HIGH:   has catalog + has Instagram + has traffic + has meta ads data
     MEDIUM: has Instagram + has traffic
     LOW:    everything else
+
+    Uses log-transformed features (V4 schema) to detect presence.
     """
-    has_catalog = int(row.get("has_catalog", 0)) == 1
-    has_ig = int(row.get("has_instagram", 0)) == 1
+    has_catalog = row.get("log_product_count", 0) > 0
+    has_ig = row.get("log_ig_followers", 0) > 0
+    has_traffic = row.get("log_monthly_visits", 0) > 0
+    has_ads = int(row.get("has_meta_ads", 0)) == 1
 
-    # Check traffic from raw or derived
-    has_traffic = False
-    if "estimated_monthly_visits" in row.index:
-        has_traffic = pd.notna(row["estimated_monthly_visits"]) and row["estimated_monthly_visits"] > 0
-    elif "log_monthly_visits" in row.index:
-        has_traffic = row.get("log_monthly_visits", 0) > 0
-
-    if has_catalog and has_ig and has_traffic:
+    if has_catalog and has_ig and has_traffic and has_ads:
         return "high"
     elif has_ig and has_traffic:
         return "medium"
@@ -163,6 +160,13 @@ def predict_batch(
     if warnings:
         for w in warnings:
             print(f"  WARNING: {w}", file=sys.stderr)
+
+    # Filter to only the features the model expects (handles new features
+    # added to prepare_features after training, e.g. meta_ads columns)
+    model_features = list(models.values())[0].feature_name()
+    extra_cols = [c for c in X.columns if c not in model_features]
+    if extra_cols:
+        X = X[model_features]
 
     # Predict on log scale, transform back
     preds = {}

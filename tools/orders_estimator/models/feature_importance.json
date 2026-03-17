@@ -1,0 +1,85 @@
+{
+  "method": "gain",
+  "features": [
+    {
+      "name": "is_usd_origin",
+      "importance": 2095.23
+    },
+    {
+      "name": "meta_active_ads_count",
+      "importance": 1925.76
+    },
+    {
+      "name": "log_product_count",
+      "importance": 1620.92
+    },
+    {
+      "name": "price_range_ratio",
+      "importance": 1474.21
+    },
+    {
+      "name": "number_employes",
+      "importance": 1451.26
+    },
+    {
+      "name": "log_tiktok_followers",
+      "importance": 1343.73
+    },
+    {
+      "name": "log_avg_price",
+      "importance": 1291.07
+    },
+    {
+      "name": "log_monthly_visits",
+      "importance": 1188.15
+    },
+    {
+      "name": "log_fb_followers",
+      "importance": 1073.76
+    },
+    {
+      "name": "ig_engagement_rate",
+      "importance": 1056.11
+    },
+    {
+      "name": "ig_health_score",
+      "importance": 1054.22
+    },
+    {
+      "name": "log_ig_followers",
+      "importance": 861.19
+    },
+    {
+      "name": "brand_demand_score",
+      "importance": 845.69
+    },
+    {
+      "name": "company_age",
+      "importance": 807.21
+    },
+    {
+      "name": "ig_size_score",
+      "importance": 753.13
+    },
+    {
+      "name": "platform_group",
+      "importance": 142.11
+    },
+    {
+      "name": "ig_is_verified",
+      "importance": 51.87
+    },
+    {
+      "name": "site_serp_coverage_score",
+      "importance": 0.0
+    },
+    {
+      "name": "google_confidence",
+      "importance": 0.0
+    },
+    {
+      "name": "has_meta_ads",
+      "importance": 0.0
+    }
+  ]
+}

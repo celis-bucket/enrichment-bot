@@ -26,8 +26,9 @@ from core.cache_manager import cache_get, cache_set
 from detection.detect_ecommerce_platform import detect_platform_from_html
 from detection.detect_geography import detect_geography_from_html
 from detection.detect_fulfillment_provider import detect_fulfillment_from_html
-from social.extract_social_links import extract_social_links_from_html, search_instagram_via_serper
+from social.extract_social_links import extract_social_links_from_html, search_instagram_via_serper, search_facebook_via_serper
 from social.apify_instagram import get_instagram_metrics, extract_instagram_username
+from social.apify_meta_ads import get_meta_ads_count, get_meta_ads_multi_search, searchapi_facebook_page
 from ecommerce.scrape_product_catalog import scrape_product_catalog
 from traffic.estimate_traffic import estimate_traffic_from_html
 from scoring.instagram_scoring import calculate_ig_size_score, calculate_ig_health_score
@@ -80,10 +81,11 @@ def _extract_brand_name(domain: str) -> str:
 def run_enrichment(
     raw_url: str,
     batch_id: Optional[str] = None,
-    skip_apollo: bool = True,
+    skip_apollo: bool = False,
     skip_playwright: bool = True,
     enable_google_demand: bool = True,
     country: Optional[str] = None,
+    skip_cache: bool = False,
     on_step: Optional[Callable[[str, str, int, str], None]] = None,
 ) -> EnrichmentResult:
     """
@@ -181,7 +183,7 @@ def run_enrichment(
     t0 = time.time()
     try:
         # Check cache first
-        cache_hit = cache_get(domain, "web_scraper") if domain else None
+        cache_hit = cache_get(domain, "web_scraper") if (domain and not skip_cache) else None
         if cache_hit and cache_hit.get("success"):
             html = cache_hit["data"].get("html", "")
             headers = cache_hit["data"].get("headers", {})
@@ -217,7 +219,7 @@ def run_enrichment(
         tools_attempted += 1
         t0 = time.time()
         try:
-            cached = cache_get(domain, "detect_platform") if domain else None
+            cached = cache_get(domain, "detect_platform") if (domain and not skip_cache) else None
             if cached and cached.get("success"):
                 pd = cached["data"]
                 ms = int((time.time() - t0) * 1000)
@@ -244,7 +246,7 @@ def run_enrichment(
         tools_attempted += 1
         t0 = time.time()
         try:
-            cached = cache_get(domain, "detect_geography") if domain else None
+            cached = cache_get(domain, "detect_geography") if (domain and not skip_cache) else None
             if cached and cached.get("success"):
                 gd = cached["data"]
                 ms = int((time.time() - t0) * 1000)
@@ -269,11 +271,12 @@ def run_enrichment(
 
     # ===== STEP 5: Extract social links =====
     instagram_url = None
+    facebook_url = None
     if html:
         tools_attempted += 1
         t0 = time.time()
         try:
-            cached = cache_get(domain, "social_links") if domain else None
+            cached = cache_get(domain, "social_links") if (domain and not skip_cache) else None
             if cached and cached.get("success"):
                 social_data = cached["data"]
                 ms = int((time.time() - t0) * 1000)
@@ -285,6 +288,7 @@ def run_enrichment(
                     cache_set(domain, "social_links", social_data)
 
             instagram_url = social_data.get("instagram")
+            facebook_url = social_data.get("facebook")
             if instagram_url:
                 result.instagram_url = instagram_url
                 platforms_found = [k for k, v in social_data.items() if v]
@@ -318,7 +322,7 @@ def run_enrichment(
         tools_attempted += 1
         t0 = time.time()
         try:
-            cached = cache_get(domain, "apify_instagram") if domain else None
+            cached = cache_get(domain, "searchapi_instagram") if (domain and not skip_cache) else None
             if cached and cached.get("success"):
                 insta_data = cached["data"]
                 ms = int((time.time() - t0) * 1000)
@@ -329,7 +333,7 @@ def run_enrichment(
                     ms = int((time.time() - t0) * 1000)
                     insta_data = insta_result.get("data", {}) if insta_result.get("success") else {}
                     if domain and insta_data:
-                        cache_set(domain, "apify_instagram", insta_data)
+                        cache_set(domain, "searchapi_instagram", insta_data)
                 else:
                     insta_data = {}
                     ms = int((time.time() - t0) * 1000)
@@ -338,6 +342,7 @@ def run_enrichment(
                 instagram_data = insta_data
                 result.ig_followers = insta_data.get("followers")
                 result.ig_engagement_rate = insta_data.get("engagement_rate")
+                result.ig_is_verified = 1 if insta_data.get("is_verified") else 0
                 result.ig_size_score = calculate_ig_size_score(
                     followers=insta_data.get("followers", 0),
                     posts_last_30d=insta_data.get("posts_last_30d", 0),
@@ -351,7 +356,7 @@ def run_enrichment(
                 followers_str = f"{insta_data.get('followers', 0):,}"
                 _step("instagram", "ok", ms,
                       f"@{insta_data.get('username', '?')} {followers_str} followers, "
-                      f"size={result.ig_size_score} health={result.ig_health_score}")
+                      f"verified={result.ig_is_verified} size={result.ig_size_score} health={result.ig_health_score}")
                 tools_succeeded += 1
             else:
                 _step("instagram", "warn", ms, "no follower data")
@@ -359,11 +364,144 @@ def run_enrichment(
             ms = int((time.time() - t0) * 1000)
             _step("instagram", "fail", ms, str(e))
 
+    # ===== STEP 6b: META Ads (Ad Library) =====
+    # Search for Facebook page via Serper if not found in HTML
+    fb_page_name = None
+    if not facebook_url:
+        try:
+            brand_name = meta_info.get("meta_title") or (_extract_brand_name(domain) if domain else None)
+            if brand_name or domain:
+                fb_serper = search_facebook_via_serper(brand_name or "", domain=domain)
+                if fb_serper:
+                    facebook_url = fb_serper["url"]
+                    fb_page_name = fb_serper["page_name"]
+        except Exception:
+            pass
+
+    # Try SearchAPI Facebook Business Page for more reliable page name
+    if facebook_url and not fb_page_name:
+        try:
+            from social.apify_meta_ads import _extract_facebook_username
+            fb_username = _extract_facebook_username(facebook_url)
+            if fb_username:
+                fb_page_info = searchapi_facebook_page(fb_username)
+                if fb_page_info and fb_page_info.get("page_name"):
+                    fb_page_name = fb_page_info["page_name"]
+        except Exception:
+            pass
+
+    # Build search terms for Meta Ad Library (multi-search strategy):
+    # Try ALL available identifiers and take the highest ads count.
+    # This solves the problem of brands using different accounts for ads.
+    ig_full_name = instagram_data.get("full_name") if instagram_data else None
+    ig_username = instagram_data.get("username") if instagram_data else None
+    search_terms = [fb_page_name, ig_full_name, ig_username]
+    search_terms = [t for t in search_terms if t]  # filter None/empty
+
+    if search_terms:
+        tools_attempted += 1
+        t0 = time.time()
+        _step("meta_ads", "running", 0, f"multi-search: {search_terms}")
+        try:
+            cached = cache_get(domain, "meta_ads") if (domain and not skip_cache) else None
+            if cached and cached.get("success"):
+                ma = cached["data"]
+                ms = int((time.time() - t0) * 1000)
+            else:
+                # Map geography codes: COL→CO, MEX→MX
+                geo_map = {"COL": "CO", "MEX": "MX"}
+                ad_country = geo_map.get(result.geography, "CO")
+                meta_ads_result = get_meta_ads_multi_search(search_terms, country=ad_country)
+                ms = int((time.time() - t0) * 1000)
+                ma = meta_ads_result.get("data", {}) if meta_ads_result.get("success") else {}
+                if domain and ma:
+                    cache_set(domain, "meta_ads", ma)
+
+            if ma.get("active_ads_count") is not None:
+                result.meta_active_ads_count = ma["active_ads_count"]
+                search_used = ma.get("search_term", "?")
+                _step("meta_ads", "ok", ms, f"{ma['active_ads_count']} active ads (term: {search_used})")
+                tools_succeeded += 1
+            else:
+                _step("meta_ads", "warn", ms, "no META ads data")
+        except Exception as e:
+            ms = int((time.time() - t0) * 1000)
+            _step("meta_ads", "fail", ms, str(e))
+
+    # ===== STEP 6c: Facebook & TikTok followers (SearchAPI) =====
+    ig_username = instagram_data.get("username") if instagram_data else None
+    brand_name_for_social = ig_username or (_extract_brand_name(domain) if domain else None)
+
+    if brand_name_for_social:
+        # Facebook followers
+        tools_attempted += 1
+        t0 = time.time()
+        try:
+            cached = cache_get(domain, "searchapi_facebook") if (domain and not skip_cache) else None
+            if cached and cached.get("success"):
+                fb_data = cached["data"]
+                ms = int((time.time() - t0) * 1000)
+            else:
+                fb_data = searchapi_facebook_page(brand_name_for_social) or {}
+                ms = int((time.time() - t0) * 1000)
+                if domain and fb_data:
+                    cache_set(domain, "searchapi_facebook", fb_data)
+
+            fb_followers = fb_data.get("followers")
+            if isinstance(fb_followers, dict):
+                fb_followers = fb_followers.get("count", 0)
+            if fb_followers:
+                result.fb_followers = int(fb_followers)
+                _step("facebook", "ok", ms, f"{result.fb_followers} followers")
+                tools_succeeded += 1
+            else:
+                result.fb_followers = 0
+                _step("facebook", "warn", ms, "no page found")
+        except Exception as e:
+            ms = int((time.time() - t0) * 1000)
+            _step("facebook", "fail", ms, str(e))
+
+        # TikTok followers
+        tools_attempted += 1
+        t0 = time.time()
+        try:
+            cached = cache_get(domain, "searchapi_tiktok") if (domain and not skip_cache) else None
+            if cached and cached.get("success"):
+                tt_data = cached["data"]
+                ms = int((time.time() - t0) * 1000)
+            else:
+                import requests as _requests
+                _searchapi_token = os.getenv("SEARCHAPI_API_KEY", "")
+                tt_data = {}
+                if _searchapi_token:
+                    _resp = _requests.get(
+                        "https://www.searchapi.io/api/v1/search",
+                        params={"engine": "tiktok_profile", "username": brand_name_for_social},
+                        headers={"Authorization": f"Bearer {_searchapi_token}"},
+                        timeout=15,
+                    )
+                    if _resp.status_code == 200:
+                        tt_data = _resp.json().get("profile", {})
+                ms = int((time.time() - t0) * 1000)
+                if domain and tt_data:
+                    cache_set(domain, "searchapi_tiktok", tt_data)
+
+            if tt_data.get("followers") is not None:
+                result.tiktok_followers = int(tt_data["followers"])
+                _step("tiktok", "ok", ms, f"{result.tiktok_followers} followers")
+                tools_succeeded += 1
+            else:
+                result.tiktok_followers = 0
+                _step("tiktok", "warn", ms, "no profile found")
+        except Exception as e:
+            ms = int((time.time() - t0) * 1000)
+            _step("tiktok", "fail", ms, str(e))
+
     # ===== STEP 7: Product catalog =====
     tools_attempted += 1
     t0 = time.time()
     try:
-        cached = cache_get(domain, "product_catalog") if domain else None
+        cached = cache_get(domain, "product_catalog") if (domain and not skip_cache) else None
         if cached and cached.get("success"):
             cd = cached["data"]
             ms = int((time.time() - t0) * 1000)
@@ -395,7 +533,7 @@ def run_enrichment(
         tools_attempted += 1
         t0 = time.time()
         try:
-            cached = cache_get(domain, "traffic") if domain else None
+            cached = cache_get(domain, "traffic") if (domain and not skip_cache) else None
             if cached and cached.get("success"):
                 td = cached["data"]
                 ms = int((time.time() - t0) * 1000)
@@ -428,7 +566,7 @@ def run_enrichment(
         tools_attempted += 1
         t0 = time.time()
         try:
-            cached = cache_get(domain, "google_demand") if domain else None
+            cached = cache_get(domain, "google_demand") if (domain and not skip_cache) else None
             if cached and cached.get("success"):
                 dd = cached["data"]
                 ms = int((time.time() - t0) * 1000)
@@ -463,7 +601,7 @@ def run_enrichment(
         tools_attempted += 1
         t0 = time.time()
         try:
-            cached = cache_get(domain, "fulfillment") if domain else None
+            cached = cache_get(domain, "fulfillment") if (domain and not skip_cache) else None
             if cached and cached.get("success"):
                 fd = cached["data"]
                 ms = int((time.time() - t0) * 1000)
@@ -489,7 +627,7 @@ def run_enrichment(
     tools_attempted += 1
     t0 = time.time()
     try:
-        cached = cache_get(domain, "classify_category") if domain else None
+        cached = cache_get(domain, "classify_category") if (domain and not skip_cache) else None
         if cached and cached.get("success"):
             cat_data = cached["data"]
             ms = int((time.time() - t0) * 1000)
@@ -550,8 +688,20 @@ def run_enrichment(
                 company_info = ap_data.get("company", {})
                 result.company_linkedin = company_info.get("linkedin_url", "")
                 result.number_employes = company_info.get("employee_count")
-                # Best contact (first with email)
+                result.founded_year = company_info.get("founded_year")
+                # All contacts
                 contacts = ap_data.get("contacts", [])
+                result.contacts_list = [
+                    {
+                        "name": c.get("name", ""),
+                        "title": c.get("title", ""),
+                        "email": c.get("email"),
+                        "linkedin_url": c.get("linkedin_url"),
+                        "phone": c.get("phone"),
+                    }
+                    for c in contacts
+                ]
+                # Best contact (first with email) — kept for Sheet + backwards compat
                 for c in contacts:
                     if c.get("email"):
                         result.contact_name = c.get("name", "")

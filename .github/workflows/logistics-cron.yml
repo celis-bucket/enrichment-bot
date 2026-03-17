@@ -1,0 +1,56 @@
+name: Logistics Crisis Monitor — Weekly Scan
+
+on:
+  schedule:
+    # Monday 8:00 UTC = Monday 3:00 AM COT (Colombia Time, UTC-5)
+    - cron: '0 8 * * 1'
+  workflow_dispatch:
+    inputs:
+      force:
+        description: 'Force re-scan even if already scanned this week'
+        required: false
+        default: 'false'
+        type: boolean
+      limit:
+        description: 'Max number of companies to scan (leave empty for all)'
+        required: false
+        type: string
+
+jobs:
+  scan:
+    name: Scan Instagram Comments
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: |
+          pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Run weekly scan
+        env:
+          APIFY_API_TOKEN: ${{ secrets.APIFY_API_TOKEN }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          SEARCHAPI_API_KEY: ${{ secrets.SEARCHAPI_API_KEY }}
+          SERPER_API_KEY: ${{ secrets.SERPER_API_KEY }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+        run: |
+          ARGS=""
+          if [ "${{ inputs.force }}" = "true" ]; then
+            ARGS="$ARGS --force"
+          fi
+          if [ -n "${{ inputs.limit }}" ]; then
+            ARGS="$ARGS --limit ${{ inputs.limit }}"
+          fi
+          python tools/logistics/supabase_cron_runner.py $ARGS
