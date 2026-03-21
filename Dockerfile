@@ -17,6 +17,12 @@ COPY tools/ ./tools/
 # Create tmp directories for cache and processing
 RUN mkdir -p .tmp/html .tmp/images .tmp/cache
 
+# Set working directory to backend so relative imports (from api.xxx) work
+WORKDIR /app/backend
+
+# Add parent dir to PYTHONPATH so tools/ imports work
+ENV PYTHONPATH=/app
+
 EXPOSE 8000
 
-CMD ["uvicorn", "backend.api.main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "2"]
+CMD ["uvicorn", "api.main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "2"]
