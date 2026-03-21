@@ -14,9 +14,10 @@ import threading
 from datetime import datetime
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import FastAPI, HTTPException, Query, Security, Depends
 from fastapi.responses import StreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from dotenv import load_dotenv
 import redis
 
@@ -102,6 +103,28 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+# ===== API Key Authentication =====
+
+security = HTTPBearer()
+
+# Load valid API keys from env (comma-separated)
+_valid_api_keys = set(
+    k.strip() for k in os.getenv('API_KEYS', '').split(',') if k.strip()
+)
+
+
+async def verify_api_key(
+    credentials: HTTPAuthorizationCredentials = Security(security),
+):
+    """Validate Bearer token against configured API_KEYS."""
+    if not _valid_api_keys:
+        # No keys configured = auth disabled (open access)
+        return credentials.credentials if credentials else None
+    if credentials.credentials not in _valid_api_keys:
+        raise HTTPException(status_code=401, detail="Invalid API key")
+    return credentials.credentials
 
 
 # ===== Health Check Endpoint =====
@@ -312,7 +335,7 @@ def _build_v2_response(enrichment_result, prediction: dict) -> dict:
 
 
 @app.post("/api/v2/enrichment/analyze-stream", tags=["Enrichment V2"])
-async def analyze_stream_v2(request: SyncEnrichmentRequest):
+async def analyze_stream_v2(request: SyncEnrichmentRequest, api_key: str = Depends(verify_api_key)):
     """
     V2 SSE streaming enrichment endpoint.
 
@@ -392,7 +415,7 @@ async def analyze_stream_v2(request: SyncEnrichmentRequest):
 
 @app.get("/api/v2/enrichment/check-duplicate", response_model=DuplicateCheckResponse,
          tags=["Enrichment V2"])
-async def check_duplicate(domain: str = Query(..., description="Domain to check")):
+async def check_duplicate(domain: str = Query(..., description="Domain to check"), api_key: str = Depends(verify_api_key)):
     """Check if a domain already exists in the enriched_companies table."""
     try:
         client = supabase_client or get_supabase_client()
@@ -407,6 +430,7 @@ async def check_duplicate(domain: str = Query(..., description="Domain to check"
 @app.get("/api/v2/enrichment/companies", response_model=CompanyListResponse,
          tags=["Companies"])
 async def list_companies(
+    api_key: str = Depends(verify_api_key),
     page: int = Query(1, ge=1),
     limit: int = Query(25, ge=1, le=100),
     search: str = Query("", description="Search by company name or domain"),
@@ -458,7 +482,7 @@ async def list_companies(
 
 
 @app.get("/api/v2/enrichment/companies/{domain}", tags=["Companies"])
-async def get_company(domain: str):
+async def get_company(domain: str, api_key: str = Depends(verify_api_key)):
     """Get full enrichment data for a single company by domain."""
     try:
         client = supabase_client or get_supabase_client()

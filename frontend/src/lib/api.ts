@@ -10,6 +10,15 @@ import type {
 } from './types';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+const API_KEY = process.env.NEXT_PUBLIC_API_KEY || '';
+
+function authHeaders(extra: Record<string, string> = {}): Record<string, string> {
+  const headers: Record<string, string> = { ...extra };
+  if (API_KEY) {
+    headers['Authorization'] = `Bearer ${API_KEY}`;
+  }
+  return headers;
+}
 
 export async function analyzeUrlV2(
   url: string,
@@ -19,7 +28,7 @@ export async function analyzeUrlV2(
 ): Promise<void> {
   const response = await fetch(`${API_BASE}/api/v2/enrichment/analyze-stream`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: authHeaders({ 'Content-Type': 'application/json' }),
     body: JSON.stringify({ url }),
   });
 
@@ -76,7 +85,8 @@ export async function analyzeUrlV2(
 export async function checkDuplicate(domain: string): Promise<DuplicateCheckResult> {
   try {
     const response = await fetch(
-      `${API_BASE}/api/v2/enrichment/check-duplicate?domain=${encodeURIComponent(domain)}`
+      `${API_BASE}/api/v2/enrichment/check-duplicate?domain=${encodeURIComponent(domain)}`,
+      { headers: authHeaders() }
     );
     if (!response.ok) return { exists: false };
     return response.json();
@@ -100,7 +110,8 @@ export async function getCompanies(params?: {
   if (params?.geography) searchParams.set('geography', params.geography);
 
   const response = await fetch(
-    `${API_BASE}/api/v2/enrichment/companies?${searchParams.toString()}`
+    `${API_BASE}/api/v2/enrichment/companies?${searchParams.toString()}`,
+    { headers: authHeaders() }
   );
   if (!response.ok) {
     return { companies: [], total: 0, page: 1, limit: 25 };
@@ -110,7 +121,8 @@ export async function getCompanies(params?: {
 
 export async function getCompany(domain: string): Promise<EnrichmentV2Results> {
   const response = await fetch(
-    `${API_BASE}/api/v2/enrichment/companies/${encodeURIComponent(domain)}`
+    `${API_BASE}/api/v2/enrichment/companies/${encodeURIComponent(domain)}`,
+    { headers: authHeaders() }
   );
   if (!response.ok) {
     throw new Error(`Company not found: ${domain}`);
