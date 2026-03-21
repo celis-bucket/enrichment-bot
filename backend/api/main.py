@@ -94,7 +94,7 @@ app = FastAPI(
 )
 
 # Configure CORS
-cors_origins = os.getenv('API_CORS_ORIGINS', 'http://localhost:3000,http://localhost:3001,https://enrichment-bot-psi.vercel.app').split(',')
+cors_origins = os.getenv('API_CORS_ORIGINS', 'http://localhost:3000,http://localhost:3001,http://localhost:3002,https://enrichment-bot-psi.vercel.app').split(',')
 app.add_middleware(
     CORSMiddleware,
     allow_origins=cors_origins,

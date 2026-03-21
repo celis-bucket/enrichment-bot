@@ -191,9 +191,13 @@ def detect_geography_from_html(
         confidence = min(max_score / 100.0, 1.0) if max_score > 0 else 0.0
 
         # Determine primary country (highest score)
+        # Normalize to ISO-like codes for downstream consistency
+        COUNTRY_CODE_MAP = {"Colombia": "COL", "Mexico": "MEX"}
         primary_country = None
         if detected_countries:
-            primary_country = max(country_scores.items(), key=lambda x: x[1])[0]
+            primary_country_name = max(country_scores.items(), key=lambda x: x[1])[0]
+            primary_country = COUNTRY_CODE_MAP.get(primary_country_name, primary_country_name)
+        detected_countries = [COUNTRY_CODE_MAP.get(c, c) for c in detected_countries]
 
         return {
             'success': True,

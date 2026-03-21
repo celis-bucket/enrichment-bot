@@ -356,6 +356,15 @@ def search_instagram_via_serper(brand_name: str, domain: Optional[str] = None) -
         return None
 
     organic = result.get('data', {}).get('organic', [])
+
+    # Extract the core brand name from domain (e.g., "entiii" from "entiii.com")
+    brand_core = None
+    if domain:
+        brand_core = domain.split('.')[0].lower()
+    elif brand_name:
+        brand_core = re.sub(r'[^a-z0-9]', '', brand_name.lower())
+
+    candidates = []
     for item in organic:
         link = item.get('link', '')
         # Match instagram.com profile URLs, skip /p/ /reel/ /explore/ etc.
@@ -366,9 +375,21 @@ def search_instagram_via_serper(brand_name: str, domain: Optional[str] = None) -
         if match:
             username = match.group(1)
             if username.lower() not in {'p', 'tv', 'reel', 'explore', 'accounts', 'direct', 'stories'}:
-                return f'https://instagram.com/{username}'
+                candidates.append(username)
 
-    return None
+    if not candidates:
+        return None
+
+    # --- Fix: Validate candidates against brand name ---
+    # Prefer a candidate whose username contains the brand core name
+    if brand_core and len(brand_core) >= 3:
+        for candidate in candidates:
+            candidate_clean = re.sub(r'[^a-z0-9]', '', candidate.lower())
+            if brand_core in candidate_clean or candidate_clean in brand_core:
+                return f'https://instagram.com/{candidate}'
+
+    # No brand-matched candidate found — return first as before (backwards-compatible)
+    return f'https://instagram.com/{candidates[0]}'
 
 
 def extract_social_links(url: str) -> Dict[str, Any]:

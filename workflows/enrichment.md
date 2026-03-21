@@ -44,6 +44,11 @@ python tools/orchestrator/batch_runner.py urls.txt --sheet URL --batch-id my-run
 | 10 | Fulfillment | `detection/detect_fulfillment_provider.py` (passive) | fulfillment_provider, fulfillment_confidence |
 | 11 | Category | `ai/classify_category.py` (Claude Sonnet, tool_use) | category, category_confidence, category_evidence, company_name |
 | 12 | Apollo | `contacts/apollo_enrichment.py` (OFF by default in batch) | contact_name, contact_email, company_linkedin, number_employes |
+| 12b | Geo Reconcile | (inline in orchestrator) | geography, geography_confidence (fallback when HTML detection fails) |
+
+**Geography reconciliation** (Step 12b): Fires only when geography is UNKNOWN. Uses fallback signals in priority order: (1) explicit `country` parameter, (2) Apollo company country, (3) catalog currency (COP→COL, MXN→MEX), (4) domain TLD.
+
+**Apollo contact search**: Uses bilingual titles (English + Spanish) and retries with seniority-based filter (owner/founder/c_suite/vp/director) when title search returns 0 results.
 
 **Post-pipeline** (API endpoint and batch CLI):
 | Step | Tool | Fields |

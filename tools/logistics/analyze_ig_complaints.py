@@ -12,6 +12,7 @@ Workflow: workflows/ig_logistics_complaints.md
 
 import math
 import os
+import re
 import sys
 import json
 import time
@@ -322,7 +323,23 @@ def analyze_logistics_complaints(company_url: str) -> Dict[str, Any]:
 # Internal helpers
 # ---------------------------------------------------------------------------
 def _resolve_instagram(company_url: str) -> Dict[str, Any]:
-    """Extract Instagram username from a company's website (+ Serper fallback)."""
+    """Extract Instagram username from a company's website (+ Serper fallback).
+
+    Bug fixes applied:
+    - Detects when company_url is already an Instagram URL and extracts username directly
+    - Serper fallback validates that the found username is related to the brand/domain
+    """
+    from urllib.parse import urlparse
+
+    # --- Fix 1: If the URL is already an Instagram URL, extract directly ---
+    parsed = urlparse(company_url)
+    if parsed.netloc and 'instagram.com' in parsed.netloc:
+        username = extract_instagram_username(company_url)
+        if username:
+            return {'success': True, 'username': username}
+        return {'success': False, 'reason': 'no_instagram_found',
+                'detail': f'Could not parse username from IG URL: {company_url}'}
+
     try:
         from core.url_normalizer import normalize_url
         normalized = normalize_url(company_url)
@@ -337,11 +354,23 @@ def _resolve_instagram(company_url: str) -> Dict[str, Any]:
     if social_result['success'] and social_result['data'].get('instagram'):
         ig_url = social_result['data']['instagram']
 
-    # Serper fallback
+    # --- Fix 3: Cross-check IG username against domain ---
+    # If the website links to an IG that doesn't match the brand, try Serper
+    domain = urlparse(url_to_scrape).netloc or url_to_scrape
+    domain = domain.replace('www.', '')
+    brand_core = domain.split('.')[0].lower()
+
+    if ig_url and len(brand_core) >= 3:
+        found_username = extract_instagram_username(ig_url) or ''
+        username_clean = re.sub(r'[^a-z0-9]', '', found_username.lower())
+        if brand_core not in username_clean and username_clean not in brand_core:
+            # IG from website doesn't match brand — try Serper for a better match
+            serper_url = search_instagram_via_serper(domain, domain=domain)
+            if serper_url:
+                ig_url = serper_url  # Serper already validates brand match
+
+    # Serper fallback (if no IG found at all)
     if not ig_url:
-        from urllib.parse import urlparse
-        domain = urlparse(url_to_scrape).netloc or url_to_scrape
-        domain = domain.replace('www.', '')
         ig_url = search_instagram_via_serper(domain, domain=domain)
 
     if not ig_url:

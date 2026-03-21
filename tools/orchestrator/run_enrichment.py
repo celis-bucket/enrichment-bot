@@ -676,6 +676,7 @@ def run_enrichment(
         _step("category", "fail", ms, str(e))
 
     # ===== STEP 12: Apollo =====
+    apollo_country = None
     if not skip_apollo:
         t0 = time.time()
         tools_attempted += 1
@@ -689,6 +690,7 @@ def run_enrichment(
                 result.company_linkedin = company_info.get("linkedin_url", "")
                 result.number_employes = company_info.get("employee_count")
                 result.founded_year = company_info.get("founded_year")
+                apollo_country = company_info.get("country", "")
                 # All contacts
                 contacts = ap_data.get("contacts", [])
                 result.contacts_list = [
@@ -715,6 +717,53 @@ def run_enrichment(
         except Exception as e:
             ms = int((time.time() - t0) * 1000)
             _step("apollo", "fail", ms, str(e))
+
+    # ===== STEP 12b: Geography reconciliation =====
+    if result.geography in (None, "UNKNOWN"):
+        t0 = time.time()
+        geo_resolved = None
+        geo_source = ""
+
+        COUNTRY_NORM = {
+            "colombia": "COL", "col": "COL",
+            "mexico": "MEX", "méxico": "MEX", "mex": "MEX",
+        }
+
+        # Signal 1: explicit country parameter
+        if country and country.strip().lower() in COUNTRY_NORM:
+            geo_resolved = COUNTRY_NORM[country.strip().lower()]
+            geo_source = f"input param: {country}"
+
+        # Signal 2: Apollo company country
+        if not geo_resolved and apollo_country:
+            norm_key = apollo_country.strip().lower()
+            if norm_key in COUNTRY_NORM:
+                geo_resolved = COUNTRY_NORM[norm_key]
+                geo_source = f"apollo country: {apollo_country}"
+
+        # Signal 3: catalog currency
+        if not geo_resolved and result.currency:
+            CURRENCY_GEO = {"COP": "COL", "MXN": "MEX"}
+            if result.currency in CURRENCY_GEO:
+                geo_resolved = CURRENCY_GEO[result.currency]
+                geo_source = f"catalog currency: {result.currency}"
+
+        # Signal 4: domain TLD
+        if not geo_resolved and domain:
+            if domain.endswith(".co") or ".co." in domain:
+                geo_resolved = "COL"
+                geo_source = f"domain TLD: {domain}"
+            elif domain.endswith(".mx") or ".mx." in domain:
+                geo_resolved = "MEX"
+                geo_source = f"domain TLD: {domain}"
+
+        ms = int((time.time() - t0) * 1000)
+        if geo_resolved:
+            result.geography = geo_resolved
+            result.geography_confidence = 0.5
+            _step("geo_reconcile", "ok", ms, geo_source)
+        else:
+            _step("geo_reconcile", "warn", ms, "still UNKNOWN after all signals")
 
     # ===== FINALIZE =====
     result.tool_coverage_pct = round(tools_succeeded / max(tools_attempted, 1), 2)

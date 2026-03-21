@@ -24,10 +24,18 @@ load_dotenv()
 
 APOLLO_BASE_URL = "https://api.apollo.io/api/v1"
 DEFAULT_TITLES = [
-    "CEO", "COO", "CTO",
+    # English
+    "CEO", "COO", "CTO", "CFO",
     "Head of Logistics", "Head of Operations",
     "VP of Operations", "Director of Supply Chain",
-    "Head of E-commerce", "Founder"
+    "Head of E-commerce", "Founder", "Co-Founder", "Owner",
+    # Spanish
+    "Director General", "Director de Operaciones",
+    "Director de Logística", "Director Comercial",
+    "Gerente General", "Gerente de Operaciones",
+    "Gerente de Logística", "Gerente Comercial",
+    "Jefe de Logística", "Jefe de Operaciones",
+    "Fundador", "Fundadora",
 ]
 
 
@@ -267,6 +275,25 @@ def find_decision_makers(
 
         data = response.json()
         people = data.get('people', [])
+
+        if not people:
+            # Retry with seniority filter (language-agnostic, free)
+            try:
+                retry_response = requests.post(
+                    f"{APOLLO_BASE_URL}/mixed_people/api_search",
+                    headers={"Content-Type": "application/json", "X-Api-Key": api_key},
+                    json={
+                        "q_organization_domains": domain,
+                        "person_seniorities": ["owner", "founder", "c_suite", "vp", "director"],
+                        "page": 1,
+                        "per_page": 10
+                    },
+                    timeout=30
+                )
+                if retry_response.status_code == 200:
+                    people = retry_response.json().get('people', [])
+            except Exception:
+                pass  # keep people as empty list
 
         if not people:
             return {
