@@ -23,6 +23,6 @@ WORKDIR /app/backend
 # Add parent dir to PYTHONPATH so tools/ imports work
 ENV PYTHONPATH=/app
 
-EXPOSE 8000
+EXPOSE ${PORT:-8000}
 
-CMD ["uvicorn", "api.main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "2"]
+CMD uvicorn api.main:app --host 0.0.0.0 --port ${PORT:-8000} --workers 2
