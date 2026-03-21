@@ -208,6 +208,131 @@ def estimate_total_products(soup: BeautifulSoup, products_per_page: int) -> Opti
     return None
 
 
+def scrape_vtex_api(base_url: str) -> Dict[str, Any]:
+    """
+    Scrape products from VTEX's public catalog search API.
+
+    Args:
+        base_url: Base URL of the VTEX store
+
+    Returns:
+        Dict with success, data, error
+    """
+    import requests
+
+    parsed = urlparse(base_url)
+    store_base = f"{parsed.scheme}://{parsed.netloc}"
+
+    try:
+        headers = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+            'Accept': 'application/json',
+        }
+
+        all_products = []
+        page_size = 50
+        max_pages = 3  # cap to avoid timeouts
+
+        for page in range(max_pages):
+            _from = page * page_size
+            _to = _from + page_size - 1
+            api_url = f"{store_base}/api/catalog_system/pub/products/search?_from={_from}&_to={_to}"
+
+            response = requests.get(api_url, headers=headers, timeout=20)
+            # VTEX returns 206 (Partial Content) when more pages exist, 200 on the last page
+            if response.status_code not in (200, 206):
+                if page == 0:
+                    return {'success': False, 'data': {}, 'error': f'VTEX API returned {response.status_code}'}
+                break
+
+            try:
+                batch = response.json()
+            except Exception:
+                break
+
+            if not batch:
+                break
+
+            all_products.extend(batch)
+
+            # If fewer results than requested, we've hit the end
+            if len(batch) < page_size:
+                break
+
+        if not all_products:
+            return {'success': False, 'data': {}, 'error': 'No products in VTEX API response'}
+
+        prices = []
+        sample_products = []
+
+        for product in all_products:
+            title = product.get('productName', 'Unknown')
+            try:
+                price = product['items'][0]['sellers'][0]['commertialOffer']['Price']
+                if price and price > 0:
+                    prices.append(float(price))
+                    sample_products.append({'name': title, 'price': float(price)})
+                else:
+                    sample_products.append({'name': title})
+            except (KeyError, IndexError, TypeError):
+                sample_products.append({'name': title})
+
+        # Estimate total: if we got max_pages * page_size results, there are likely more
+        product_count = len(all_products)
+        if product_count == max_pages * page_size:
+            # Conservatively indicate there are more — fetch one extra check
+            try:
+                check_url = f"{store_base}/api/catalog_system/pub/products/search?_from={product_count}&_to={product_count}"
+                check_resp = requests.get(check_url, headers=headers, timeout=10)
+                if check_resp.status_code == 200 and check_resp.json():
+                    product_count = product_count  # still just our sample; mark as partial
+
+            except Exception:
+                pass
+
+        if not prices:
+            return {
+                'success': True,
+                'data': {
+                    'product_count': product_count,
+                    'avg_price': None,
+                    'price_range': {'min': None, 'max': None},
+                    'currency': 'COP' if parsed.netloc.endswith('.co') else 'USD',
+                    'sample_products': sample_products[:10],
+                    'products_on_page': len(all_products),
+                    'source': 'vtex_api',
+                },
+                'error': None,
+            }
+
+        avg_price = statistics.mean(prices)
+        currency = 'COP' if avg_price > 10000 or parsed.netloc.endswith('.co') else 'USD'
+        if parsed.netloc.endswith('.mx'):
+            currency = 'MXN'
+
+        return {
+            'success': True,
+            'data': {
+                'product_count': product_count,
+                'avg_price': round(avg_price, 2),
+                'price_range': {
+                    'min': round(min(prices), 2),
+                    'max': round(max(prices), 2),
+                },
+                'currency': currency,
+                'sample_products': sample_products[:10],
+                'products_on_page': len(all_products),
+                'source': 'vtex_api',
+            },
+            'error': None,
+        }
+
+    except requests.exceptions.RequestException as e:
+        return {'success': False, 'data': {}, 'error': f'VTEX API request failed: {str(e)}'}
+    except Exception as e:
+        return {'success': False, 'data': {}, 'error': f'VTEX API error: {str(e)}'}
+
+
 def scrape_shopify_api(base_url: str) -> Dict[str, Any]:
     """
     Scrape products from Shopify's JSON API.
@@ -308,10 +433,22 @@ def scrape_product_catalog(url: str, platform: Optional[str] = None) -> Dict[str
             - error: str or None
     """
     try:
-        # Try Shopify API first (works even with anti-bot protection)
+        # If platform is known VTEX, try VTEX API first
+        if platform and platform.upper() == 'VTEX':
+            vtex_result = scrape_vtex_api(url)
+            if vtex_result['success']:
+                return vtex_result
+
+        # Try Shopify API (works even with anti-bot protection)
         shopify_result = scrape_shopify_api(url)
         if shopify_result['success']:
             return shopify_result
+
+        # If platform unknown, also attempt VTEX opportunistically before HTML fallback
+        if not (platform and platform.upper() == 'VTEX'):
+            vtex_result = scrape_vtex_api(url)
+            if vtex_result['success']:
+                return vtex_result
 
         # Fall back to HTML scraping
         listing_url = url

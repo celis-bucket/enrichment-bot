@@ -42,7 +42,7 @@ ALLOWED_CATEGORIES = [
     "Zapatos",
 ]
 
-MODEL = "claude-sonnet-4-5-20250929"
+MODEL = "claude-sonnet-4-6"
 
 SYSTEM_PROMPT = """You are a product category classifier for Latin American e-commerce companies.
 You will receive information about a company (domain, page metadata, product samples, and social media info).
