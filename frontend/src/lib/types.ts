@@ -4,7 +4,7 @@
 
 export interface WorkflowStep {
   step: string;
-  status: "ok" | "warn" | "fail" | "skip";
+  status: "running" | "ok" | "warn" | "fail" | "skip";
   duration_ms: number;
   detail?: string | null;
 }
