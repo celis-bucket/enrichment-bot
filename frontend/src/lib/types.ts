@@ -117,3 +117,13 @@ export interface CompanyListResponse {
   page: number;
   limit: number;
 }
+
+export interface FeedbackItem {
+  id?: string;
+  domain: string;
+  section: string;
+  comment: string;
+  suggested_value?: string | null;
+  created_by: string;
+  created_at?: string | null;
+}

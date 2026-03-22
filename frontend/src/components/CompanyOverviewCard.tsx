@@ -1,6 +1,8 @@
 'use client';
 
 import { useState } from 'react';
+import type { FeedbackItem } from '@/lib/types';
+import { FeedbackPanel } from './FeedbackPanel';
 
 interface CompanyOverviewCardProps {
   geography?: string | null;
@@ -15,6 +17,8 @@ interface CompanyOverviewCardProps {
   toolCoveragePct?: number | null;
   totalRuntimeSec?: number | null;
   costEstimateUsd?: number | null;
+  domain?: string;
+  feedback?: FeedbackItem[];
 }
 
 function ConfidencePill({ value }: { value: number | null | undefined }) {
@@ -60,6 +64,8 @@ export function CompanyOverviewCard({
   toolCoveragePct,
   totalRuntimeSec,
   costEstimateUsd,
+  domain = '',
+  feedback = [],
 }: CompanyOverviewCardProps) {
   const [showEvidence, setShowEvidence] = useState(false);
 
@@ -113,6 +119,8 @@ export function CompanyOverviewCard({
           )}
         </div>
       )}
+
+      {domain && <FeedbackPanel domain={domain} section="overview" existingFeedback={feedback} />}
     </div>
   );
 }

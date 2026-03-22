@@ -1,16 +1,22 @@
 'use client';
 
+import type { FeedbackItem } from '@/lib/types';
+import { FeedbackPanel } from './FeedbackPanel';
+
 interface MetaAdsCardProps {
   activeAdsCount?: number | null;
   adLibraryUrl?: string | null;
+  domain?: string;
+  feedback?: FeedbackItem[];
 }
 
-export function MetaAdsCard({ activeAdsCount, adLibraryUrl }: MetaAdsCardProps) {
+export function MetaAdsCard({ activeAdsCount, adLibraryUrl, domain = '', feedback = [] }: MetaAdsCardProps) {
   if (activeAdsCount == null) {
     return (
       <div className="bg-white rounded-2xl border border-melonn-purple-50 shadow-sm p-5">
         <h3 className="text-sm font-semibold text-melonn-navy font-heading mb-2">META Ads</h3>
         <p className="text-sm text-melonn-navy/40">No META ads data available</p>
+        {domain && <FeedbackPanel domain={domain} section="meta_ads" existingFeedback={feedback} />}
       </div>
     );
   }
@@ -53,6 +59,8 @@ export function MetaAdsCard({ activeAdsCount, adLibraryUrl }: MetaAdsCardProps) 
           View in Meta Ad Library
         </a>
       )}
+
+      {domain && <FeedbackPanel domain={domain} section="meta_ads" existingFeedback={feedback} />}
     </div>
   );
 }

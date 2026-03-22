@@ -1,11 +1,16 @@
 'use client';
 
+import type { FeedbackItem } from '@/lib/types';
+import { FeedbackPanel } from './FeedbackPanel';
+
 interface CatalogCardProps {
   productCount?: number | null;
   avgPrice?: number | null;
   priceRangeMin?: number | null;
   priceRangeMax?: number | null;
   currency?: string | null;
+  domain?: string;
+  feedback?: FeedbackItem[];
 }
 
 function formatPrice(value: number, currency: string): string {
@@ -22,12 +27,13 @@ function formatPrice(value: number, currency: string): string {
   }
 }
 
-export function CatalogCard({ productCount, avgPrice, priceRangeMin, priceRangeMax, currency }: CatalogCardProps) {
+export function CatalogCard({ productCount, avgPrice, priceRangeMin, priceRangeMax, currency, domain = '', feedback = [] }: CatalogCardProps) {
   if (productCount == null) {
     return (
       <div className="bg-white rounded-2xl border border-melonn-purple-50 shadow-sm p-5">
         <h3 className="text-sm font-semibold text-melonn-navy font-heading mb-2">Product Catalog</h3>
         <p className="text-sm text-melonn-navy/40">No catalog data available</p>
+        {domain && <FeedbackPanel domain={domain} section="catalog" existingFeedback={feedback} />}
       </div>
     );
   }
@@ -75,6 +81,8 @@ export function CatalogCard({ productCount, avgPrice, priceRangeMin, priceRangeM
           </div>
         )}
       </div>
+
+      {domain && <FeedbackPanel domain={domain} section="catalog" existingFeedback={feedback} />}
     </div>
   );
 }

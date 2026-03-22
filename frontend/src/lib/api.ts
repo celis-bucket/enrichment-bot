@@ -7,6 +7,7 @@ import type {
   PipelineStep,
   DuplicateCheckResult,
   CompanyListResponse,
+  FeedbackItem,
 } from './types';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
@@ -128,4 +129,44 @@ export async function getCompany(domain: string): Promise<EnrichmentV2Results> {
     throw new Error(`Company not found: ${domain}`);
   }
   return response.json();
+}
+
+export async function submitFeedback(
+  domain: string,
+  section: string,
+  comment: string,
+  suggestedValue?: string,
+  createdBy?: string,
+): Promise<{ id: string; saved: boolean }> {
+  const response = await fetch(
+    `${API_BASE}/api/v2/enrichment/${encodeURIComponent(domain)}/feedback`,
+    {
+      method: 'POST',
+      headers: authHeaders({ 'Content-Type': 'application/json' }),
+      body: JSON.stringify({
+        section,
+        comment,
+        suggested_value: suggestedValue || null,
+        created_by: createdBy || 'anonymous',
+      }),
+    }
+  );
+  if (!response.ok) {
+    throw new Error(`Failed to submit feedback: HTTP ${response.status}`);
+  }
+  return response.json();
+}
+
+export async function getFeedback(domain: string): Promise<FeedbackItem[]> {
+  try {
+    const response = await fetch(
+      `${API_BASE}/api/v2/enrichment/${encodeURIComponent(domain)}/feedback`,
+      { headers: authHeaders() }
+    );
+    if (!response.ok) return [];
+    const data = await response.json();
+    return data.feedback || [];
+  } catch {
+    return [];
+  }
 }

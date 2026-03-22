@@ -1,5 +1,8 @@
 'use client';
 
+import type { FeedbackItem } from '@/lib/types';
+import { FeedbackPanel } from './FeedbackPanel';
+
 interface TrafficDemandCardProps {
   estimatedMonthlyVisits?: number | null;
   trafficConfidence?: number | null;
@@ -7,6 +10,8 @@ interface TrafficDemandCardProps {
   brandDemandScore?: number | null;
   siteSerpCoverageScore?: number | null;
   googleConfidence?: number | null;
+  domain?: string;
+  feedback?: FeedbackItem[];
 }
 
 function formatVisits(n: number): string {
@@ -52,6 +57,8 @@ export function TrafficDemandCard({
   brandDemandScore,
   siteSerpCoverageScore,
   googleConfidence,
+  domain = '',
+  feedback = [],
 }: TrafficDemandCardProps) {
   const hasTraffic = estimatedMonthlyVisits != null;
   const hasDemand = brandDemandScore != null || siteSerpCoverageScore != null;
@@ -61,6 +68,7 @@ export function TrafficDemandCard({
       <div className="bg-white rounded-2xl border border-melonn-purple-50 shadow-sm p-5">
         <h3 className="text-sm font-semibold text-melonn-navy font-heading mb-2">Traffic & Demand</h3>
         <p className="text-sm text-melonn-navy/40">No traffic or demand data available</p>
+        {domain && <FeedbackPanel domain={domain} section="traffic" existingFeedback={feedback} />}
       </div>
     );
   }
@@ -100,6 +108,8 @@ export function TrafficDemandCard({
           )}
         </div>
       )}
+
+      {domain && <FeedbackPanel domain={domain} section="traffic" existingFeedback={feedback} />}
     </div>
   );
 }

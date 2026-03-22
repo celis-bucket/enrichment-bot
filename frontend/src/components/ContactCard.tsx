@@ -1,6 +1,7 @@
 'use client';
 
-import type { ApolloContact } from '@/lib/types';
+import type { ApolloContact, FeedbackItem } from '@/lib/types';
+import { FeedbackPanel } from './FeedbackPanel';
 
 interface ContactCardProps {
   contacts?: ApolloContact[];
@@ -8,9 +9,11 @@ interface ContactCardProps {
   contactEmail?: string | null;
   companyLinkedin?: string | null;
   numberEmployes?: number | null;
+  domain?: string;
+  feedback?: FeedbackItem[];
 }
 
-export function ContactCard({ contacts, contactName, contactEmail, companyLinkedin, numberEmployes }: ContactCardProps) {
+export function ContactCard({ contacts, contactName, contactEmail, companyLinkedin, numberEmployes, domain = '', feedback = [] }: ContactCardProps) {
   const hasContacts = contacts && contacts.length > 0;
   const hasFallback = contactName || contactEmail;
   const hasCompanyInfo = companyLinkedin || numberEmployes;
@@ -20,6 +23,7 @@ export function ContactCard({ contacts, contactName, contactEmail, companyLinked
       <div className="bg-white rounded-2xl border border-melonn-purple-50 shadow-sm p-5">
         <h3 className="text-sm font-semibold text-melonn-navy font-heading mb-2">Contact & Company</h3>
         <p className="text-sm text-melonn-navy/40">No contact data available</p>
+        {domain && <FeedbackPanel domain={domain} section="contacts" existingFeedback={feedback} />}
       </div>
     );
   }
@@ -89,6 +93,8 @@ export function ContactCard({ contacts, contactName, contactEmail, companyLinked
           )}
         </div>
       )}
+
+      {domain && <FeedbackPanel domain={domain} section="contacts" existingFeedback={feedback} />}
     </div>
   );
 }

@@ -116,3 +116,61 @@ def ping(client: SupabaseClient) -> bool:
         return True
     except Exception:
         return False
+
+
+# ===== Feedback =====
+
+FEEDBACK_TABLE = "enrichment_feedback"
+
+
+def insert_feedback(
+    client: SupabaseClient,
+    domain: str,
+    section: str,
+    comment: str,
+    suggested_value: str = None,
+    created_by: str = "anonymous",
+) -> dict:
+    """
+    Insert a feedback record for an enrichment section.
+
+    Args:
+        client: SupabaseClient instance
+        domain: Company domain
+        section: Section name (overview, instagram, catalog, traffic, meta_ads, contacts, prediction, general)
+        comment: Free-form feedback text
+        suggested_value: Optional corrected value
+        created_by: User identifier
+
+    Returns:
+        The inserted row dict from Supabase
+    """
+    row = {
+        "domain": domain.lower().strip(),
+        "section": section,
+        "comment": comment,
+        "created_by": created_by or "anonymous",
+    }
+    if suggested_value:
+        row["suggested_value"] = suggested_value
+
+    result = client.insert(FEEDBACK_TABLE, row)
+    return result[0] if result else {}
+
+
+def get_feedback(client: SupabaseClient, domain: str) -> list[dict]:
+    """
+    Get all feedback for a domain, newest first.
+
+    Args:
+        client: SupabaseClient instance
+        domain: Company domain
+
+    Returns:
+        List of feedback dicts
+    """
+    return client.select(
+        FEEDBACK_TABLE,
+        eq={"domain": domain.lower().strip()},
+        order="created_at.desc",
+    )

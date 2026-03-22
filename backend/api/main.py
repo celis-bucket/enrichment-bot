@@ -31,6 +31,8 @@ from export.supabase_writer import (
     upsert_enrichment,
     check_domain_exists as sb_check_domain,
     ping as supabase_ping,
+    insert_feedback,
+    get_feedback,
 )
 from orchestrator.run_enrichment import run_enrichment
 
@@ -41,6 +43,9 @@ from api.models.schemas import (
     DuplicateCheckResponse,
     CompanyListItem,
     CompanyListResponse,
+    FeedbackRequest,
+    FeedbackItem,
+    FeedbackListResponse,
 )
 
 
@@ -561,6 +566,38 @@ async def get_company(domain: str, api_key: str = Depends(verify_api_key)):
         }
     except HTTPException:
         raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# ===== Feedback Endpoints =====
+
+@app.post("/api/v2/enrichment/{domain}/feedback", tags=["Feedback"])
+async def submit_feedback(domain: str, request: FeedbackRequest, api_key: str = Depends(verify_api_key)):
+    """Submit feedback on a specific enrichment section for a domain."""
+    try:
+        client = supabase_client or get_supabase_client()
+        result = insert_feedback(
+            client,
+            domain=domain,
+            section=request.section,
+            comment=request.comment,
+            suggested_value=request.suggested_value,
+            created_by=request.created_by or "anonymous",
+        )
+        return {"id": result.get("id"), "saved": True}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/v2/enrichment/{domain}/feedback", response_model=FeedbackListResponse, tags=["Feedback"])
+async def list_feedback(domain: str, api_key: str = Depends(verify_api_key)):
+    """Get all feedback for a domain."""
+    try:
+        client = supabase_client or get_supabase_client()
+        rows = get_feedback(client, domain)
+        items = [FeedbackItem(**r) for r in rows]
+        return FeedbackListResponse(domain=domain, feedback=items, total=len(items))
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 

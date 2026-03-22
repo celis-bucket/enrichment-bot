@@ -1,9 +1,12 @@
 'use client';
 
-import type { OrdersPrediction } from '@/lib/types';
+import type { OrdersPrediction, FeedbackItem } from '@/lib/types';
+import { FeedbackPanel } from './FeedbackPanel';
 
 interface PredictionCardProps {
   prediction?: OrdersPrediction | null;
+  domain?: string;
+  feedback?: FeedbackItem[];
 }
 
 const CONFIDENCE_STYLES = {
@@ -17,12 +20,13 @@ function formatOrders(n: number): string {
   return n.toLocaleString();
 }
 
-export function PredictionCard({ prediction }: PredictionCardProps) {
+export function PredictionCard({ prediction, domain = '', feedback = [] }: PredictionCardProps) {
   if (!prediction) {
     return (
       <div className="bg-white rounded-2xl border border-melonn-purple-50 shadow-sm p-5">
         <h3 className="text-sm font-semibold text-melonn-navy font-heading mb-2">Orders Estimation</h3>
         <p className="text-sm text-melonn-navy/40">Model could not generate a prediction</p>
+        {domain && <FeedbackPanel domain={domain} section="prediction" existingFeedback={feedback} />}
       </div>
     );
   }
@@ -30,7 +34,7 @@ export function PredictionCard({ prediction }: PredictionCardProps) {
   const { predicted_orders_p10, predicted_orders_p50, predicted_orders_p90, prediction_confidence } = prediction;
   const conf = CONFIDENCE_STYLES[prediction_confidence] || CONFIDENCE_STYLES.low;
 
-  // Calculate bar positions (log scale for better visualization)
+  // Calculate bar positions
   const maxVal = Math.max(predicted_orders_p90, 1);
   const p10Pct = Math.max(5, (predicted_orders_p10 / maxVal) * 100);
   const p50Pct = Math.max(10, (predicted_orders_p50 / maxVal) * 100);
@@ -78,6 +82,8 @@ export function PredictionCard({ prediction }: PredictionCardProps) {
           <span className="font-medium">P90:</span> {formatOrders(predicted_orders_p90)}
         </div>
       </div>
+
+      {domain && <FeedbackPanel domain={domain} section="prediction" existingFeedback={feedback} />}
     </div>
   );
 }

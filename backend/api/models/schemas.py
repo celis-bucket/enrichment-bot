@@ -138,3 +138,31 @@ class CompanyListResponse(BaseModel):
     total: int = 0
     page: int = 1
     limit: int = 25
+
+
+# ===== Feedback Models =====
+
+class FeedbackRequest(BaseModel):
+    """Request model for submitting feedback on an enrichment section"""
+    section: str = Field(..., description="Section name: overview, instagram, catalog, traffic, meta_ads, contacts, prediction, general")
+    comment: str = Field(..., min_length=1, description="Free-form feedback text")
+    suggested_value: Optional[str] = Field(None, description="Optional corrected value")
+    created_by: Optional[str] = Field("anonymous", description="User identifier")
+
+
+class FeedbackItem(BaseModel):
+    """Single feedback entry"""
+    id: Optional[str] = None
+    domain: str
+    section: str
+    comment: str
+    suggested_value: Optional[str] = None
+    created_by: str = "anonymous"
+    created_at: Optional[str] = None
+
+
+class FeedbackListResponse(BaseModel):
+    """List of feedback items for a domain"""
+    domain: str
+    feedback: List[FeedbackItem] = Field(default_factory=list)
+    total: int = 0

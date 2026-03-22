@@ -1,7 +1,8 @@
 'use client';
 
-import { useState } from 'react';
-import type { EnrichmentV2Results } from '@/lib/types';
+import { useState, useEffect } from 'react';
+import type { EnrichmentV2Results, FeedbackItem } from '@/lib/types';
+import { getFeedback } from '@/lib/api';
 import { CompanyOverviewCard } from './CompanyOverviewCard';
 import { CatalogCard } from './CatalogCard';
 import { TrafficDemandCard } from './TrafficDemandCard';
@@ -9,6 +10,7 @@ import { ContactCard } from './ContactCard';
 import { MetaAdsCard } from './MetaAdsCard';
 import { PredictionCard } from './PredictionCard';
 import { WorkflowReport } from './WorkflowReport';
+import { FeedbackPanel } from './FeedbackPanel';
 
 interface ResultsDisplayProps {
   results: EnrichmentV2Results;
@@ -30,6 +32,14 @@ function ScoreBadge({ score, label }: { score: number | null | undefined; label:
 
 export function ResultsDisplay({ results }: ResultsDisplayProps) {
   const [showLog, setShowLog] = useState(false);
+  const [feedback, setFeedback] = useState<FeedbackItem[]>([]);
+  const domain = results.domain || '';
+
+  useEffect(() => {
+    if (domain) {
+      getFeedback(domain).then(setFeedback).catch(() => {});
+    }
+  }, [domain]);
 
   return (
     <div className="w-full max-w-5xl mx-auto space-y-4">
@@ -53,6 +63,7 @@ export function ResultsDisplay({ results }: ResultsDisplayProps) {
             </span>
           )}
         </div>
+        <FeedbackPanel domain={domain} section="general" existingFeedback={feedback} />
       </div>
 
       {/* Company Overview (full-width) */}
@@ -69,6 +80,8 @@ export function ResultsDisplay({ results }: ResultsDisplayProps) {
         toolCoveragePct={results.tool_coverage_pct}
         totalRuntimeSec={results.total_runtime_sec}
         costEstimateUsd={results.cost_estimate_usd}
+        domain={domain}
+        feedback={feedback}
       />
 
       {/* Data Grid - 2 columns on desktop */}
@@ -96,6 +109,7 @@ export function ResultsDisplay({ results }: ResultsDisplayProps) {
                 <ScoreBadge score={results.ig_health_score} label="Health" />
               </div>
             </div>
+            <FeedbackPanel domain={domain} section="instagram" existingFeedback={feedback} />
           </div>
         )}
 
@@ -106,6 +120,8 @@ export function ResultsDisplay({ results }: ResultsDisplayProps) {
           priceRangeMin={results.price_range_min}
           priceRangeMax={results.price_range_max}
           currency={results.currency}
+          domain={domain}
+          feedback={feedback}
         />
 
         {/* Traffic & Demand */}
@@ -116,12 +132,16 @@ export function ResultsDisplay({ results }: ResultsDisplayProps) {
           brandDemandScore={results.brand_demand_score}
           siteSerpCoverageScore={results.site_serp_coverage_score}
           googleConfidence={results.google_confidence}
+          domain={domain}
+          feedback={feedback}
         />
 
         {/* META Ads */}
         <MetaAdsCard
           activeAdsCount={results.meta_active_ads_count}
           adLibraryUrl={results.meta_ad_library_url}
+          domain={domain}
+          feedback={feedback}
         />
 
         {/* Contact & Company (Apollo) */}
@@ -131,13 +151,19 @@ export function ResultsDisplay({ results }: ResultsDisplayProps) {
           contactEmail={results.contact_email}
           companyLinkedin={results.company_linkedin}
           numberEmployes={results.number_employes}
+          domain={domain}
+          feedback={feedback}
         />
 
         {/* Orders Prediction */}
-        <PredictionCard prediction={results.prediction} />
+        <PredictionCard
+          prediction={results.prediction}
+          domain={domain}
+          feedback={feedback}
+        />
       </div>
 
-      {/* Workflow Log (expandable) */}
+      {/* Workflow Log (expanded by default now) */}
       {results.workflow_log && results.workflow_log.length > 0 && (
         <div>
           <button
@@ -148,7 +174,11 @@ export function ResultsDisplay({ results }: ResultsDisplayProps) {
           </button>
           {showLog && (
             <div className="mt-2">
-              <WorkflowReport steps={results.workflow_log} />
+              <WorkflowReport
+                steps={results.workflow_log}
+                totalRuntimeSec={results.total_runtime_sec}
+                costEstimateUsd={results.cost_estimate_usd}
+              />
             </div>
           )}
         </div>
