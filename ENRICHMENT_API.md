@@ -1,0 +1,308 @@
+# Melonn Enrichment API — Integration Guide
+
+This document describes how to integrate with Melonn's Enrichment API. Use it to enrich e-commerce companies with data about their platform, social media, ads, traffic, contacts, and estimated order volume.
+
+## Setup
+
+### Environment Variable
+Add this to your `.env` file:
+```
+ENRICHMENT_API_KEY=<your-api-key>
+ENRICHMENT_API_URL=https://enrichment-bot-production-943a.up.railway.app
+```
+
+### Authentication
+All requests require a Bearer token:
+```
+Authorization: Bearer <ENRICHMENT_API_KEY>
+```
+
+---
+
+## Endpoints
+
+### 1. Enrich a company (streaming)
+
+**`POST /api/v2/enrichment/analyze-stream`**
+
+Takes a URL or domain and runs the full enrichment pipeline (~20-60 seconds). Returns real-time progress events via Server-Sent Events (SSE), ending with the full result.
+
+**Request:**
+```json
+{
+  "url": "thehairg.com"
+}
+```
+
+The `url` field accepts:
+- A domain: `thehairg.com`
+- A full URL: `https://thehairg.com/`
+- A brand name: `The Hair Generation` (resolved via Google Search)
+
+**cURL example:**
+```bash
+curl -X POST "${ENRICHMENT_API_URL}/api/v2/enrichment/analyze-stream" \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer ${ENRICHMENT_API_KEY}" \
+  -d '{"url": "thehairg.com"}'
+```
+
+**Response (SSE stream):**
+
+The response is a stream of `data:` lines. Each line is a JSON object with a `type` field:
+
+```
+data: {"type": "step", "step": "scrape", "status": "running", "duration_ms": 0, "detail": ""}
+data: {"type": "step", "step": "scrape", "status": "ok", "duration_ms": 492, "detail": "470KB"}
+data: {"type": "step", "step": "platform", "status": "ok", "duration_ms": 172, "detail": "Shopify (0.50)"}
+...
+data: {"type": "result", "data": { ...full enrichment result... }}
+```
+
+- `type: "step"` — progress update (status: `running`, `ok`, `warn`, `fail`, `skip`)
+- `type: "result"` — final enrichment data (see Response Schema below)
+- `type: "error"` — pipeline error with `detail` message
+
+### 2. Get an already-enriched company
+
+**`GET /api/v2/enrichment/companies/{domain}`**
+
+Returns cached enrichment data without re-running the pipeline. Fast (< 200ms).
+
+```bash
+curl "${ENRICHMENT_API_URL}/api/v2/enrichment/companies/thehairg.com" \
+  -H "Authorization: Bearer ${ENRICHMENT_API_KEY}"
+```
+
+### 3. Check if a domain was already enriched
+
+**`GET /api/v2/enrichment/check-duplicate?domain={domain}`**
+
+```bash
+curl "${ENRICHMENT_API_URL}/api/v2/enrichment/check-duplicate?domain=thehairg.com" \
+  -H "Authorization: Bearer ${ENRICHMENT_API_KEY}"
+```
+
+**Response:**
+```json
+{
+  "exists": true,
+  "domain": "thehairg.com",
+  "last_analyzed": "2026-03-21T17:20:00Z"
+}
+```
+
+### 4. List all enriched companies
+
+**`GET /api/v2/enrichment/companies`**
+
+Query params: `page` (default 1), `limit` (default 25, max 100), `search`, `category`, `geography`
+
+```bash
+curl "${ENRICHMENT_API_URL}/api/v2/enrichment/companies?page=1&limit=10&geography=COL" \
+  -H "Authorization: Bearer ${ENRICHMENT_API_KEY}"
+```
+
+### 5. Health check (no auth required)
+
+**`GET /health`**
+
+```bash
+curl "${ENRICHMENT_API_URL}/health"
+```
+
+---
+
+## Response Schema
+
+The enrichment result (`type: "result"` in the stream, or the GET company response) has these fields:
+
+```typescript
+interface EnrichmentResult {
+  // Identity
+  company_name: string | null;      // "The Hair Generation"
+  domain: string | null;             // "thehairg.com"
+
+  // Platform detection
+  platform: string | null;           // "Shopify", "VTEX", "WooCommerce", etc.
+  platform_confidence: number | null; // 0.0 - 1.0
+
+  // Geography
+  geography: string | null;          // ISO 3166 alpha-3: "COL", "MEX", "BRA"
+  geography_confidence: number | null;
+
+  // Category
+  category: string | null;           // "Beauty", "Fashion", "Electronics", etc.
+  category_confidence: number | null;
+  category_evidence: string | null;
+
+  // Instagram
+  instagram_url: string | null;      // "https://instagram.com/thehairgeneration"
+  ig_followers: number | null;       // 379917
+  ig_size_score: number | null;      // 0-100 scale
+  ig_health_score: number | null;    // 0-100 scale
+
+  // Company info (from Apollo.io)
+  company_linkedin: string | null;
+  contact_name: string | null;       // Primary contact
+  contact_email: string | null;
+  number_employes: number | null;
+  contacts: ApolloContact[];         // All contacts found
+
+  // Meta Ads
+  meta_active_ads_count: number | null;  // 10404
+  meta_ad_library_url: string | null;
+
+  // Product catalog
+  product_count: number | null;      // 14
+  avg_price: number | null;          // 149600.0
+  price_range_min: number | null;
+  price_range_max: number | null;
+  currency: string | null;           // "COP", "MXN", "USD"
+
+  // Traffic
+  estimated_monthly_visits: number | null;  // 114135
+  traffic_confidence: number | null;
+  signals_used: string | null;
+
+  // Google demand signals
+  brand_demand_score: number | null;        // 0.0 - 1.0
+  site_serp_coverage_score: number | null;  // 0.0 - 1.0
+  google_confidence: number | null;
+
+  // Fulfillment
+  fulfillment_provider: string | null;
+  fulfillment_confidence: number | null;
+
+  // Orders prediction
+  prediction: {
+    predicted_orders_p10: number;    // Conservative estimate
+    predicted_orders_p50: number;    // Median estimate
+    predicted_orders_p90: number;    // Optimistic estimate
+    prediction_confidence: "high" | "medium" | "low";
+  } | null;
+
+  // Execution metadata
+  tool_coverage_pct: number | null;  // 0.0 - 1.0 (% of tools that succeeded)
+  total_runtime_sec: number | null;
+  cost_estimate_usd: number | null;
+  workflow_log: WorkflowStep[];      // Step-by-step execution log
+}
+
+interface ApolloContact {
+  name: string;
+  title: string;
+  email: string | null;
+  linkedin_url: string | null;
+  phone: string | null;
+}
+
+interface WorkflowStep {
+  step: string;
+  status: "ok" | "warn" | "fail" | "skip";
+  duration_ms: number;
+  detail: string | null;
+}
+```
+
+---
+
+## Integration Patterns
+
+### Pattern A: Enrich on lead submission (recommended)
+
+When a lead comes in with a website URL, call the streaming endpoint and wait for the result:
+
+```typescript
+async function enrichLead(url: string): Promise<EnrichmentResult> {
+  const response = await fetch(
+    `${process.env.ENRICHMENT_API_URL}/api/v2/enrichment/analyze-stream`,
+    {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${process.env.ENRICHMENT_API_KEY}`,
+      },
+      body: JSON.stringify({ url }),
+    }
+  );
+
+  if (!response.ok) {
+    throw new Error(`Enrichment failed: HTTP ${response.status}`);
+  }
+
+  // Read SSE stream and extract the final result
+  const text = await response.text();
+  const lines = text.split('\n');
+
+  for (const line of lines) {
+    if (!line.startsWith('data: ')) continue;
+    const msg = JSON.parse(line.slice(6));
+    if (msg.type === 'result') {
+      return msg.data;
+    }
+    if (msg.type === 'error') {
+      throw new Error(msg.detail);
+    }
+  }
+
+  throw new Error('No result received from enrichment');
+}
+```
+
+### Pattern B: Check cache first, then enrich
+
+```typescript
+async function getOrEnrichCompany(domain: string): Promise<EnrichmentResult> {
+  const headers = { 'Authorization': `Bearer ${process.env.ENRICHMENT_API_KEY}` };
+
+  // Check if already enriched
+  const check = await fetch(
+    `${process.env.ENRICHMENT_API_URL}/api/v2/enrichment/check-duplicate?domain=${domain}`,
+    { headers }
+  );
+  const { exists } = await check.json();
+
+  if (exists) {
+    // Return cached data
+    const res = await fetch(
+      `${process.env.ENRICHMENT_API_URL}/api/v2/enrichment/companies/${domain}`,
+      { headers }
+    );
+    return res.json();
+  }
+
+  // Run fresh enrichment
+  return enrichLead(domain);
+}
+```
+
+---
+
+## Real Example
+
+**Input:** `thehairg.com`
+
+**Key output fields:**
+| Field | Value |
+|---|---|
+| platform | Shopify |
+| geography | COL |
+| ig_followers | 379,917 |
+| meta_active_ads_count | 10,404 |
+| product_count | 14 |
+| avg_price | 149,600 COP |
+| estimated_monthly_visits | 114,135 |
+| predicted_orders_p50 | 1,010 |
+| prediction_confidence | high |
+| total_runtime_sec | 22 |
+| cost_estimate_usd | $0.05 |
+
+---
+
+## Notes
+
+- Each enrichment takes 20-60 seconds and costs ~$0.05 USD in API credits
+- Results are cached in the database — use `check-duplicate` or `GET /companies/{domain}` to avoid re-running
+- The API processes one enrichment at a time per domain
+- Interactive API docs available at: `${ENRICHMENT_API_URL}/docs`
