@@ -252,60 +252,56 @@ export default function HistoryPage() {
         {/* Table */}
         <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[1150px] text-sm">
+            <table className="w-full text-xs">
               <thead>
                 <tr className="bg-melonn-purple-50 text-melonn-navy text-left">
-                  <th className="px-3 py-3 font-semibold whitespace-nowrap min-w-[160px]">Empresa</th>
-                  <th className="px-3 py-3 font-semibold whitespace-nowrap">País</th>
-                  <th className="px-3 py-3 font-semibold whitespace-nowrap">Categoría</th>
-                  <th className="px-3 py-3 font-semibold whitespace-nowrap">Plataforma</th>
-                  <th className="px-3 py-3 font-semibold whitespace-nowrap text-right">IG Followers</th>
-                  <th className="px-3 py-3 font-semibold whitespace-nowrap text-right">Meta Ads</th>
-                  <th className="px-3 py-3 font-semibold whitespace-nowrap text-right">Conservador</th>
-                  <th className="px-3 py-3 font-semibold whitespace-nowrap text-right">Optimista</th>
-                  <th className="px-3 py-3 font-semibold whitespace-nowrap">Confianza</th>
-                  <th className="px-3 py-3 font-semibold whitespace-nowrap min-w-[130px]">Contacto</th>
-                  <th className="px-3 py-3 font-semibold whitespace-nowrap">Analizado</th>
-                  <th className="px-3 py-3 font-semibold w-[110px]"></th>
+                  <th className="px-3 py-2.5 font-semibold whitespace-nowrap">Empresa</th>
+                  <th className="px-2 py-2.5 font-semibold whitespace-nowrap">País</th>
+                  <th className="px-2 py-2.5 font-semibold whitespace-nowrap">Categoría</th>
+                  <th className="px-2 py-2.5 font-semibold whitespace-nowrap text-right">IG</th>
+                  <th className="px-2 py-2.5 font-semibold whitespace-nowrap text-right">Meta Ads</th>
+                  <th className="px-2 py-2.5 font-semibold whitespace-nowrap text-right">Conservador</th>
+                  <th className="px-2 py-2.5 font-semibold whitespace-nowrap text-right">Optimista</th>
+                  <th className="px-2 py-2.5 font-semibold whitespace-nowrap">Confianza</th>
+                  <th className="px-2 py-2.5 font-semibold whitespace-nowrap">Contacto</th>
+                  <th className="px-3 py-2.5 font-semibold w-[100px]"></th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-50">
                 {isLoading ? (
                   <tr>
-                    <td colSpan={12} className="px-4 py-12 text-center text-gray-400">Cargando...</td>
+                    <td colSpan={10} className="px-4 py-12 text-center text-gray-400">Cargando...</td>
                   </tr>
                 ) : companies.length === 0 ? (
                   <tr>
-                    <td colSpan={12} className="px-4 py-12 text-center text-gray-400">
+                    <td colSpan={10} className="px-4 py-12 text-center text-gray-400">
                       {search ? 'Ninguna empresa coincide con la búsqueda' : 'Aún no hay empresas enriquecidas'}
                     </td>
                   </tr>
                 ) : (
                   companies.map((c) => (
                     <tr key={c.id || c.domain} className="hover:bg-melonn-purple-50/30 transition-colors">
-                      <td className="px-3 py-3">
-                        <div className="font-medium text-melonn-navy truncate max-w-[180px]">{c.company_name || c.domain}</div>
-                        <div className="text-xs text-gray-400 truncate max-w-[180px]">{c.domain}</div>
+                      <td className="px-3 py-2.5">
+                        <div className="font-medium text-melonn-navy truncate max-w-[160px]">{c.company_name || c.domain}</div>
+                        <div className="text-gray-400 truncate max-w-[160px]">{c.domain}</div>
                       </td>
-                      <td className="px-3 py-3 text-gray-600 whitespace-nowrap">{c.geography || '—'}</td>
-                      <td className="px-3 py-3 text-gray-600 whitespace-nowrap">{c.category || '—'}</td>
-                      <td className="px-3 py-3 text-gray-600 whitespace-nowrap">{c.platform || '—'}</td>
-                      <td className="px-3 py-3 text-right text-gray-600 whitespace-nowrap">{fmt(c.ig_followers)}</td>
-                      <td className="px-3 py-3 text-right text-gray-600 whitespace-nowrap">{fmt(c.meta_active_ads_count)}</td>
-                      <td className="px-3 py-3 text-right font-medium text-melonn-navy whitespace-nowrap">{fmt(c.predicted_orders_p50)}</td>
-                      <td className="px-3 py-3 text-right text-gray-600 whitespace-nowrap">{fmt(c.predicted_orders_p90)}</td>
-                      <td className="px-3 py-3 whitespace-nowrap"><ConfidenceBadge level={c.prediction_confidence} /></td>
-                      <td className="px-3 py-3">
-                        <div className="text-gray-600 truncate max-w-[130px]">{c.contact_name || '—'}</div>
+                      <td className="px-2 py-2.5 text-gray-600 whitespace-nowrap">{c.geography || '—'}</td>
+                      <td className="px-2 py-2.5 text-gray-600 whitespace-nowrap">{c.category || '—'}</td>
+                      <td className="px-2 py-2.5 text-right text-gray-600 whitespace-nowrap">{fmt(c.ig_followers)}</td>
+                      <td className="px-2 py-2.5 text-right text-gray-600 whitespace-nowrap">{fmt(c.meta_active_ads_count)}</td>
+                      <td className="px-2 py-2.5 text-right font-semibold text-melonn-navy whitespace-nowrap">{fmt(c.predicted_orders_p50)}</td>
+                      <td className="px-2 py-2.5 text-right text-gray-600 whitespace-nowrap">{fmt(c.predicted_orders_p90)}</td>
+                      <td className="px-2 py-2.5 whitespace-nowrap"><ConfidenceBadge level={c.prediction_confidence} /></td>
+                      <td className="px-2 py-2.5">
+                        <div className="text-gray-600 truncate max-w-[120px]">{c.contact_name || '—'}</div>
                         {c.contact_email && (
-                          <div className="text-xs text-gray-400 truncate max-w-[130px]">{c.contact_email}</div>
+                          <div className="text-gray-400 truncate max-w-[120px]">{c.contact_email}</div>
                         )}
                       </td>
-                      <td className="px-3 py-3 text-gray-500 text-xs whitespace-nowrap">{fmtDate(c.updated_at)}</td>
-                      <td className="px-3 py-3">
+                      <td className="px-3 py-2.5">
                         <button
                           onClick={() => setSelectedDomain(c.domain || null)}
-                          className="text-xs px-3 py-1.5 rounded-md bg-melonn-purple text-white
+                          className="px-2.5 py-1 rounded-md bg-melonn-purple text-white
                                      hover:bg-melonn-purple/90 transition-colors whitespace-nowrap font-medium"
                         >
                           Ver detalles
