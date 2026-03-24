@@ -35,6 +35,8 @@ from models.enrichment_result import ALLOWED_CATEGORIES
 # Currency normalization constants
 # ---------------------------------------------------------------------------
 USD_COP_RATE = 4_200   # approximate USD -> COP conversion rate
+MXN_COP_RATE = 230     # approximate MXN -> COP conversion rate
+BRL_COP_RATE = 750     # approximate BRL -> COP conversion rate
 USD_THRESHOLD = 500     # avg_price below this -> detected as USD (clean gap in data)
 
 # ---------------------------------------------------------------------------
@@ -49,28 +51,55 @@ PLATFORM_GROUP_MAP = {
 
 def _normalize_prices(df: pd.DataFrame) -> tuple[pd.DataFrame, list[str], pd.Series]:
     """
-    Detect and convert USD prices to COP.
+    Normalize all prices to COP.
+
+    Strategy:
+    1. If 'currency' column exists, use it to convert MXN, USD, BRL → COP
+    2. Fallback: detect USD by avg_price < threshold (legacy behavior)
 
     Returns:
-        (df, warnings, usd_mask) where usd_mask is a boolean Series
-        indicating which rows were detected as USD-priced.
+        (df, warnings, non_cop_mask) where non_cop_mask is a boolean Series
+        indicating which rows had their prices converted.
     """
     warnings = []
     price_cols = ["avg_price", "price_range_min", "price_range_max"]
 
-    mask = df["avg_price"].notna() & (df["avg_price"] < USD_THRESHOLD)
-    n_usd = mask.sum()
+    # Currency-based conversion (preferred — uses explicit currency from catalog)
+    non_cop_mask = pd.Series(False, index=df.index)
 
-    if n_usd > 0:
-        for col in price_cols:
-            if col in df.columns:
-                df.loc[mask, col] = df.loc[mask, col] * USD_COP_RATE
-        warnings.append(
-            f"Currency normalization: {n_usd} stores detected as USD "
-            f"(avg_price < {USD_THRESHOLD}), converted to COP at rate {USD_COP_RATE}"
-        )
+    if "currency" in df.columns:
+        currency_rates = {
+            "MXN": MXN_COP_RATE,
+            "USD": USD_COP_RATE,
+            "BRL": BRL_COP_RATE,
+        }
+        for cur, rate in currency_rates.items():
+            cur_mask = df["currency"].fillna("").str.upper() == cur
+            n_cur = cur_mask.sum()
+            if n_cur > 0:
+                for col in price_cols:
+                    if col in df.columns:
+                        df.loc[cur_mask, col] = df.loc[cur_mask, col] * rate
+                non_cop_mask = non_cop_mask | cur_mask
+                warnings.append(
+                    f"Currency normalization: {n_cur} stores in {cur} "
+                    f"converted to COP at rate {rate}"
+                )
+    else:
+        # Legacy fallback: detect USD by price threshold
+        usd_mask = df["avg_price"].notna() & (df["avg_price"] < USD_THRESHOLD)
+        n_usd = usd_mask.sum()
+        if n_usd > 0:
+            for col in price_cols:
+                if col in df.columns:
+                    df.loc[usd_mask, col] = df.loc[usd_mask, col] * USD_COP_RATE
+            non_cop_mask = usd_mask
+            warnings.append(
+                f"Currency normalization: {n_usd} stores detected as USD "
+                f"(avg_price < {USD_THRESHOLD}), converted to COP at rate {USD_COP_RATE}"
+            )
 
-    return df, warnings, mask
+    return df, warnings, non_cop_mask
 
 
 def validate_input_schema(

@@ -231,6 +231,7 @@ def _run_prediction(enrichment_result) -> dict:
             "site_serp_coverage_score": enrichment_result.site_serp_coverage_score,
             "number_employes": enrichment_result.number_employes,
             "meta_active_ads_count": enrichment_result.meta_active_ads_count,
+            "currency": enrichment_result.currency,
         }
         df = pd.DataFrame([row])
 
