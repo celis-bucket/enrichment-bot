@@ -728,7 +728,9 @@ def run_enrichment(
                         result.contact_name = c.get("name", "")
                         result.contact_email = c.get("email", "")
                         break
-                _step("apollo", "ok", ms, f"{len(contacts)} contacts, linkedin={'yes' if result.company_linkedin else 'no'}")
+                apollo_domain = ap_data.get("apollo_domain", domain)
+                via_suffix = f" (via {apollo_domain})" if apollo_domain != domain else ""
+                _step("apollo", "ok", ms, f"{len(contacts)} contacts, linkedin={'yes' if result.company_linkedin else 'no'}{via_suffix}")
                 tools_succeeded += 1
             else:
                 err = apollo_result.get("error", "no data")

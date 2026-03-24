@@ -380,9 +380,50 @@ def find_decision_makers(
         }
 
 
+def _get_fallback_domains(domain: str) -> List[str]:
+    """
+    Generate alternate domains to try in Apollo when the primary domain returns nothing.
+
+    Examples:
+        platanomelon.mx      → [platanomelon.com]
+        gaiadesign.com.mx    → [gaiadesign.com]
+        onehalf.com.co       → [onehalf.com]
+        armatura.com.co      → [armatura.com]
+        example.com          → []  (already .com, no fallback)
+    """
+    compound_tlds = ['.com.mx', '.com.co', '.com.ar', '.com.br', '.com.pe', '.com.ec']
+    country_tlds = ['.mx', '.co', '.ar', '.cl', '.pe', '.ec', '.br']
+
+    for ctld in compound_tlds:
+        if domain.endswith(ctld):
+            base = domain[:-len(ctld)]
+            return [f"{base}.com"]
+
+    for ctld in country_tlds:
+        if domain.endswith(ctld):
+            base = domain[:-len(ctld)]
+            return [f"{base}.com"]
+
+    return []
+
+
+def _has_apollo_data(company_result: dict, contacts_result: dict) -> bool:
+    """Check if Apollo returned any meaningful data."""
+    company_data = company_result.get('data', {})
+    has_company = (
+        company_data.get('source') == 'apollo'
+        and (company_data.get('company_name') or company_data.get('linkedin_url'))
+    )
+    contacts = contacts_result.get('data', {}).get('contacts', [])
+    has_contacts = len(contacts) > 0
+    return has_company or has_contacts
+
+
 def apollo_enrich(domain: str) -> Dict[str, Any]:
     """
     Combined company enrichment + decision-maker search.
+    If the primary domain returns nothing, tries fallback domains
+    (e.g. platanomelon.mx → platanomelon.com).
 
     Args:
         domain: Company website domain
@@ -390,12 +431,28 @@ def apollo_enrich(domain: str) -> Dict[str, Any]:
     Returns:
         Dict with:
             - success: bool
-            - data: dict with company info, contacts, domain, source
+            - data: dict with company info, contacts, domain, source, apollo_domain
             - error: str or None
     """
     try:
         company_result = enrich_company(domain)
         contacts_result = find_decision_makers(domain)
+        used_domain = domain
+
+        # If primary domain returned nothing, try fallback domains
+        if not _has_apollo_data(company_result, contacts_result):
+            fallbacks = _get_fallback_domains(domain)
+            for fallback_domain in fallbacks:
+                fb_company = enrich_company(fallback_domain)
+                fb_company_data = fb_company.get('data', {})
+                # Check if this fallback has company data
+                if fb_company_data.get('source') == 'apollo' and (
+                    fb_company_data.get('company_name') or fb_company_data.get('linkedin_url')
+                ):
+                    company_result = fb_company
+                    contacts_result = find_decision_makers(fallback_domain)
+                    used_domain = fallback_domain
+                    break
 
         # Determine overall source
         company_source = company_result.get('data', {}).get('source', 'unknown')
@@ -418,6 +475,7 @@ def apollo_enrich(domain: str) -> Dict[str, Any]:
                 'company': company_data,
                 'contacts': contacts_data,
                 'domain': domain,
+                'apollo_domain': used_domain,
                 'source': source
             },
             'error': '; '.join(errors) if errors else None
