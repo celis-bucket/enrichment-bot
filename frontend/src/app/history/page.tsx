@@ -2,20 +2,23 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { Header } from '@/components/Header';
-import { getCompanies } from '@/lib/api';
-import type { CompanyListItem } from '@/lib/types';
+import { getCompanies, getCompany } from '@/lib/api';
+import type { CompanyListItem, EnrichmentV2Results } from '@/lib/types';
 
-function formatNumber(n: number | null | undefined): string {
+function fmt(n: number | null | undefined): string {
   if (n == null) return '—';
-  return n.toLocaleString();
+  return n.toLocaleString('es-CO');
 }
 
-function formatDate(dateStr: string | null | undefined): string {
+function fmtPct(n: number | null | undefined): string {
+  if (n == null) return '—';
+  return `${(n * 100).toFixed(0)}%`;
+}
+
+function fmtDate(dateStr: string | null | undefined): string {
   if (!dateStr) return '—';
-  return new Date(dateStr).toLocaleDateString('en-US', {
-    month: 'short',
-    day: 'numeric',
-    year: 'numeric',
+  return new Date(dateStr).toLocaleDateString('es-CO', {
+    month: 'short', day: 'numeric', year: 'numeric',
   });
 }
 
@@ -33,12 +36,175 @@ function ConfidenceBadge({ level }: { level: string | null | undefined }) {
   );
 }
 
+function Row({ label, value }: { label: string; value: React.ReactNode }) {
+  if (value == null || value === '' || value === '—') return null;
+  return (
+    <div className="flex justify-between items-start py-1.5 border-b border-gray-50 last:border-0">
+      <span className="text-xs text-gray-400 shrink-0 w-44">{label}</span>
+      <span className="text-xs text-melonn-navy text-right break-all">{value}</span>
+    </div>
+  );
+}
+
+function Section({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <div className="mb-4">
+      <h4 className="text-xs font-semibold uppercase tracking-wider text-melonn-purple mb-1">{title}</h4>
+      <div className="bg-gray-50 rounded-lg px-3 py-1">{children}</div>
+    </div>
+  );
+}
+
+function DetailDrawer({ domain, onClose }: { domain: string; onClose: () => void }) {
+  const [data, setData] = useState<EnrichmentV2Results | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    getCompany(domain)
+      .then(setData)
+      .catch(console.error)
+      .finally(() => setLoading(false));
+  }, [domain]);
+
+  return (
+    <>
+      {/* Backdrop */}
+      <div
+        className="fixed inset-0 bg-black/30 z-40"
+        onClick={onClose}
+      />
+      {/* Drawer */}
+      <div className="fixed top-0 right-0 h-full w-[480px] max-w-full bg-white shadow-2xl z-50 flex flex-col">
+        {/* Header */}
+        <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">
+          <div>
+            <h3 className="font-bold text-melonn-navy font-heading">
+              {data?.company_name || domain}
+            </h3>
+            <p className="text-xs text-gray-400">{domain}</p>
+          </div>
+          <button
+            onClick={onClose}
+            className="text-gray-400 hover:text-gray-600 text-xl leading-none"
+          >
+            ×
+          </button>
+        </div>
+
+        {/* Body */}
+        <div className="flex-1 overflow-y-auto px-5 py-4">
+          {loading ? (
+            <p className="text-sm text-gray-400 text-center py-12">Cargando...</p>
+          ) : !data ? (
+            <p className="text-sm text-red-400 text-center py-12">No se encontró información.</p>
+          ) : (
+            <>
+              <Section title="Identidad">
+                <Row label="Empresa" value={data.company_name} />
+                <Row label="Dominio" value={data.domain} />
+                <Row label="País" value={data.geography} />
+                <Row label="Confianza geografía" value={fmtPct(data.geography_confidence)} />
+              </Section>
+
+              <Section title="Categoría">
+                <Row label="Categoría" value={data.category} />
+                <Row label="Confianza" value={fmtPct(data.category_confidence)} />
+                <Row label="Evidencia" value={data.category_evidence} />
+              </Section>
+
+              <Section title="Plataforma">
+                <Row label="Plataforma" value={data.platform} />
+                <Row label="Confianza" value={fmtPct(data.platform_confidence)} />
+              </Section>
+
+              <Section title="Instagram">
+                <Row label="Seguidores" value={fmt(data.ig_followers)} />
+                <Row label="Score tamaño" value={data.ig_size_score} />
+                <Row label="Score salud" value={data.ig_health_score} />
+                <Row label="Perfil" value={data.instagram_url
+                  ? <a href={data.instagram_url} target="_blank" rel="noreferrer" className="text-melonn-purple underline">{data.instagram_url}</a>
+                  : undefined} />
+              </Section>
+
+              <Section title="Meta Ads">
+                <Row label="Anuncios activos" value={fmt(data.meta_active_ads_count)} />
+                <Row label="Ad Library" value={data.meta_ad_library_url
+                  ? <a href={data.meta_ad_library_url} target="_blank" rel="noreferrer" className="text-melonn-purple underline">Ver anuncios</a>
+                  : undefined} />
+              </Section>
+
+              <Section title="Catálogo">
+                <Row label="Productos" value={fmt(data.product_count)} />
+                <Row label="Precio promedio" value={data.avg_price != null ? `${data.currency || ''} ${fmt(data.avg_price)}` : undefined} />
+                <Row label="Precio mínimo" value={data.price_range_min != null ? `${data.currency || ''} ${fmt(data.price_range_min)}` : undefined} />
+                <Row label="Precio máximo" value={data.price_range_max != null ? `${data.currency || ''} ${fmt(data.price_range_max)}` : undefined} />
+              </Section>
+
+              <Section title="Tráfico web">
+                <Row label="Visitas mensuales" value={fmt(data.estimated_monthly_visits)} />
+                <Row label="Confianza" value={fmtPct(data.traffic_confidence)} />
+                <Row label="Señales usadas" value={data.signals_used} />
+              </Section>
+
+              <Section title="Demanda Google">
+                <Row label="Brand demand" value={data.brand_demand_score != null ? data.brand_demand_score.toFixed(2) : undefined} />
+                <Row label="SERP coverage" value={data.site_serp_coverage_score != null ? data.site_serp_coverage_score.toFixed(2) : undefined} />
+                <Row label="Confianza" value={fmtPct(data.google_confidence)} />
+              </Section>
+
+              <Section title="Fulfillment">
+                <Row label="Operador logístico" value={data.fulfillment_provider} />
+                <Row label="Confianza" value={fmtPct(data.fulfillment_confidence)} />
+              </Section>
+
+              <Section title="Estimación de pedidos">
+                <Row label="Pesimista (p10)" value={fmt(data.prediction?.predicted_orders_p10)} />
+                <Row label="Conservador (p50)" value={fmt(data.prediction?.predicted_orders_p50)} />
+                <Row label="Optimista (p90)" value={fmt(data.prediction?.predicted_orders_p90)} />
+                <Row label="Confianza" value={data.prediction?.prediction_confidence} />
+              </Section>
+
+              <Section title="Contacto">
+                <Row label="Nombre" value={data.contact_name} />
+                <Row label="Email" value={data.contact_email} />
+                <Row label="LinkedIn empresa" value={data.company_linkedin
+                  ? <a href={data.company_linkedin} target="_blank" rel="noreferrer" className="text-melonn-purple underline">Ver perfil</a>
+                  : undefined} />
+                <Row label="Empleados" value={fmt(data.number_employes)} />
+              </Section>
+
+              {data.contacts && data.contacts.length > 0 && (
+                <Section title="Otros contactos">
+                  {data.contacts.map((c, i) => (
+                    <div key={i} className="py-1.5 border-b border-gray-100 last:border-0">
+                      <p className="text-xs font-medium text-melonn-navy">{c.name}</p>
+                      <p className="text-xs text-gray-400">{c.title}</p>
+                      {c.email && <p className="text-xs text-gray-500">{c.email}</p>}
+                    </div>
+                  ))}
+                </Section>
+              )}
+
+              <Section title="Ejecución">
+                <Row label="Herramientas cubiertas" value={fmtPct(data.tool_coverage_pct)} />
+                <Row label="Tiempo total" value={data.total_runtime_sec != null ? `${data.total_runtime_sec}s` : undefined} />
+                <Row label="Costo estimado" value={data.cost_estimate_usd != null ? `$${data.cost_estimate_usd.toFixed(4)} USD` : undefined} />
+              </Section>
+            </>
+          )}
+        </div>
+      </div>
+    </>
+  );
+}
+
 export default function HistoryPage() {
   const [companies, setCompanies] = useState<CompanyListItem[]>([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
   const [search, setSearch] = useState('');
   const [isLoading, setIsLoading] = useState(true);
+  const [selectedDomain, setSelectedDomain] = useState<string | null>(null);
   const limit = 25;
 
   const fetchCompanies = useCallback(async () => {
@@ -54,14 +220,8 @@ export default function HistoryPage() {
     }
   }, [page, search]);
 
-  useEffect(() => {
-    fetchCompanies();
-  }, [fetchCompanies]);
-
-  // Reset to page 1 when search changes
-  useEffect(() => {
-    setPage(1);
-  }, [search]);
+  useEffect(() => { fetchCompanies(); }, [fetchCompanies]);
+  useEffect(() => { setPage(1); }, [search]);
 
   const totalPages = Math.ceil(total / limit);
 
@@ -69,20 +229,18 @@ export default function HistoryPage() {
     <div className="min-h-screen bg-melonn-surface">
       <Header />
 
-      <main className="max-w-6xl mx-auto px-6 py-8">
+      <main className="max-w-7xl mx-auto px-6 py-8">
         {/* Search & Stats */}
         <div className="flex items-center justify-between mb-6">
           <div>
-            <h2 className="text-lg font-bold text-melonn-navy font-heading">
-              Enriched Companies
-            </h2>
+            <h2 className="text-lg font-bold text-melonn-navy font-heading">Enriched Companies</h2>
             <p className="text-sm text-gray-500">
-              {total} {total === 1 ? 'company' : 'companies'} in database
+              {total} {total === 1 ? 'empresa' : 'empresas'} en base de datos
             </p>
           </div>
           <input
             type="text"
-            placeholder="Search by name or domain..."
+            placeholder="Buscar por nombre o dominio..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             className="w-72 px-4 py-2 rounded-lg border border-gray-200 bg-white text-sm
@@ -97,71 +255,61 @@ export default function HistoryPage() {
             <table className="w-full text-sm">
               <thead>
                 <tr className="bg-melonn-purple-50 text-melonn-navy text-left">
-                  <th className="px-4 py-3 font-semibold">Company</th>
+                  <th className="px-4 py-3 font-semibold">Empresa</th>
                   <th className="px-4 py-3 font-semibold">País</th>
-                  <th className="px-4 py-3 font-semibold">Category</th>
-                  <th className="px-4 py-3 font-semibold">Platform</th>
+                  <th className="px-4 py-3 font-semibold">Categoría</th>
+                  <th className="px-4 py-3 font-semibold">Plataforma</th>
                   <th className="px-4 py-3 font-semibold text-right">IG Followers</th>
                   <th className="px-4 py-3 font-semibold text-right">Meta Ads</th>
-                  <th className="px-4 py-3 font-semibold text-right">p50</th>
-                  <th className="px-4 py-3 font-semibold text-right">p90</th>
-                  <th className="px-4 py-3 font-semibold">Confidence</th>
-                  <th className="px-4 py-3 font-semibold">Contact</th>
-                  <th className="px-4 py-3 font-semibold">Analyzed</th>
+                  <th className="px-4 py-3 font-semibold text-right">Conservador</th>
+                  <th className="px-4 py-3 font-semibold text-right">Optimista</th>
+                  <th className="px-4 py-3 font-semibold">Confianza</th>
+                  <th className="px-4 py-3 font-semibold">Contacto</th>
+                  <th className="px-4 py-3 font-semibold">Analizado</th>
+                  <th className="px-4 py-3 font-semibold"></th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-50">
                 {isLoading ? (
                   <tr>
-                    <td colSpan={11} className="px-4 py-12 text-center text-gray-400">
-                      Loading...
-                    </td>
+                    <td colSpan={12} className="px-4 py-12 text-center text-gray-400">Cargando...</td>
                   </tr>
                 ) : companies.length === 0 ? (
                   <tr>
-                    <td colSpan={11} className="px-4 py-12 text-center text-gray-400">
-                      {search ? 'No companies match your search' : 'No companies enriched yet'}
+                    <td colSpan={12} className="px-4 py-12 text-center text-gray-400">
+                      {search ? 'Ninguna empresa coincide con la búsqueda' : 'Aún no hay empresas enriquecidas'}
                     </td>
                   </tr>
                 ) : (
                   companies.map((c) => (
                     <tr key={c.id || c.domain} className="hover:bg-melonn-purple-50/30 transition-colors">
                       <td className="px-4 py-3">
-                        <div className="font-medium text-melonn-navy">
-                          {c.company_name || c.domain}
-                        </div>
+                        <div className="font-medium text-melonn-navy">{c.company_name || c.domain}</div>
                         <div className="text-xs text-gray-400">{c.domain}</div>
                       </td>
                       <td className="px-4 py-3 text-gray-600">{c.geography || '—'}</td>
                       <td className="px-4 py-3 text-gray-600">{c.category || '—'}</td>
                       <td className="px-4 py-3 text-gray-600">{c.platform || '—'}</td>
-                      <td className="px-4 py-3 text-right text-gray-600">
-                        {formatNumber(c.ig_followers)}
-                      </td>
-                      <td className="px-4 py-3 text-right text-gray-600">
-                        {c.meta_active_ads_count != null ? c.meta_active_ads_count : '—'}
-                      </td>
-                      <td className="px-4 py-3 text-right font-medium text-melonn-navy">
-                        {formatNumber(c.predicted_orders_p50)}
-                      </td>
-                      <td className="px-4 py-3 text-right text-gray-600">
-                        {formatNumber(c.predicted_orders_p90)}
-                      </td>
+                      <td className="px-4 py-3 text-right text-gray-600">{fmt(c.ig_followers)}</td>
+                      <td className="px-4 py-3 text-right text-gray-600">{fmt(c.meta_active_ads_count)}</td>
+                      <td className="px-4 py-3 text-right font-medium text-melonn-navy">{fmt(c.predicted_orders_p50)}</td>
+                      <td className="px-4 py-3 text-right text-gray-600">{fmt(c.predicted_orders_p90)}</td>
+                      <td className="px-4 py-3"><ConfidenceBadge level={c.prediction_confidence} /></td>
                       <td className="px-4 py-3">
-                        <ConfidenceBadge level={c.prediction_confidence} />
-                      </td>
-                      <td className="px-4 py-3">
-                        <div className="text-gray-600 truncate max-w-[140px]">
-                          {c.contact_name || '—'}
-                        </div>
+                        <div className="text-gray-600 truncate max-w-[120px]">{c.contact_name || '—'}</div>
                         {c.contact_email && (
-                          <div className="text-xs text-gray-400 truncate max-w-[140px]">
-                            {c.contact_email}
-                          </div>
+                          <div className="text-xs text-gray-400 truncate max-w-[120px]">{c.contact_email}</div>
                         )}
                       </td>
-                      <td className="px-4 py-3 text-gray-500 text-xs">
-                        {formatDate(c.updated_at)}
+                      <td className="px-4 py-3 text-gray-500 text-xs">{fmtDate(c.updated_at)}</td>
+                      <td className="px-4 py-3">
+                        <button
+                          onClick={() => setSelectedDomain(c.domain || null)}
+                          className="text-xs px-2.5 py-1 rounded-md border border-melonn-purple/30
+                                     text-melonn-purple hover:bg-melonn-purple-50 transition-colors whitespace-nowrap"
+                        >
+                          Ver detalles
+                        </button>
                       </td>
                     </tr>
                   ))
@@ -174,7 +322,7 @@ export default function HistoryPage() {
           {totalPages > 1 && (
             <div className="flex items-center justify-between px-4 py-3 border-t border-gray-100">
               <p className="text-sm text-gray-500">
-                Showing {(page - 1) * limit + 1}–{Math.min(page * limit, total)} of {total}
+                Mostrando {(page - 1) * limit + 1}–{Math.min(page * limit, total)} de {total}
               </p>
               <div className="flex gap-1">
                 <button
@@ -183,7 +331,7 @@ export default function HistoryPage() {
                   className="px-3 py-1 rounded-md text-sm border border-gray-200 disabled:opacity-40
                              hover:bg-melonn-purple-50 transition-colors"
                 >
-                  Previous
+                  Anterior
                 </button>
                 <button
                   onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
@@ -191,13 +339,18 @@ export default function HistoryPage() {
                   className="px-3 py-1 rounded-md text-sm border border-gray-200 disabled:opacity-40
                              hover:bg-melonn-purple-50 transition-colors"
                 >
-                  Next
+                  Siguiente
                 </button>
               </div>
             </div>
           )}
         </div>
       </main>
+
+      {/* Detail Drawer */}
+      {selectedDomain && (
+        <DetailDrawer domain={selectedDomain} onClose={() => setSelectedDomain(null)} />
+      )}
     </div>
   );
 }
