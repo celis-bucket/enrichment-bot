@@ -98,11 +98,13 @@ export default function HistoryPage() {
               <thead>
                 <tr className="bg-melonn-purple-50 text-melonn-navy text-left">
                   <th className="px-4 py-3 font-semibold">Company</th>
+                  <th className="px-4 py-3 font-semibold">País</th>
                   <th className="px-4 py-3 font-semibold">Category</th>
                   <th className="px-4 py-3 font-semibold">Platform</th>
                   <th className="px-4 py-3 font-semibold text-right">IG Followers</th>
                   <th className="px-4 py-3 font-semibold text-right">Meta Ads</th>
-                  <th className="px-4 py-3 font-semibold text-right">Est. Orders</th>
+                  <th className="px-4 py-3 font-semibold text-right">p50</th>
+                  <th className="px-4 py-3 font-semibold text-right">p90</th>
                   <th className="px-4 py-3 font-semibold">Confidence</th>
                   <th className="px-4 py-3 font-semibold">Contact</th>
                   <th className="px-4 py-3 font-semibold">Analyzed</th>
@@ -111,13 +113,13 @@ export default function HistoryPage() {
               <tbody className="divide-y divide-gray-50">
                 {isLoading ? (
                   <tr>
-                    <td colSpan={9} className="px-4 py-12 text-center text-gray-400">
+                    <td colSpan={11} className="px-4 py-12 text-center text-gray-400">
                       Loading...
                     </td>
                   </tr>
                 ) : companies.length === 0 ? (
                   <tr>
-                    <td colSpan={9} className="px-4 py-12 text-center text-gray-400">
+                    <td colSpan={11} className="px-4 py-12 text-center text-gray-400">
                       {search ? 'No companies match your search' : 'No companies enriched yet'}
                     </td>
                   </tr>
@@ -130,6 +132,7 @@ export default function HistoryPage() {
                         </div>
                         <div className="text-xs text-gray-400">{c.domain}</div>
                       </td>
+                      <td className="px-4 py-3 text-gray-600">{c.geography || '—'}</td>
                       <td className="px-4 py-3 text-gray-600">{c.category || '—'}</td>
                       <td className="px-4 py-3 text-gray-600">{c.platform || '—'}</td>
                       <td className="px-4 py-3 text-right text-gray-600">
@@ -140,6 +143,9 @@ export default function HistoryPage() {
                       </td>
                       <td className="px-4 py-3 text-right font-medium text-melonn-navy">
                         {formatNumber(c.predicted_orders_p50)}
+                      </td>
+                      <td className="px-4 py-3 text-right text-gray-600">
+                        {formatNumber(c.predicted_orders_p90)}
                       </td>
                       <td className="px-4 py-3">
                         <ConfidenceBadge level={c.prediction_confidence} />

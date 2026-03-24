@@ -458,7 +458,7 @@ async def list_companies(
         columns = (
             "id,domain,company_name,platform,category,geography,"
             "ig_followers,ig_size_score,ig_health_score,meta_active_ads_count,"
-            "contact_name,contact_email,predicted_orders_p50,prediction_confidence,"
+            "contact_name,contact_email,predicted_orders_p50,predicted_orders_p90,prediction_confidence,"
             "tool_coverage_pct,updated_at"
         )
         rows = client.select(

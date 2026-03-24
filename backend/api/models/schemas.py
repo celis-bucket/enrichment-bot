@@ -127,6 +127,7 @@ class CompanyListItem(BaseModel):
     contact_name: Optional[str] = None
     contact_email: Optional[str] = None
     predicted_orders_p50: Optional[int] = None
+    predicted_orders_p90: Optional[int] = None
     prediction_confidence: Optional[str] = None
     tool_coverage_pct: Optional[float] = None
     updated_at: Optional[str] = None

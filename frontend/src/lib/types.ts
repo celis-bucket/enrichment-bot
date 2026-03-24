@@ -106,6 +106,7 @@ export interface CompanyListItem {
   contact_name?: string | null;
   contact_email?: string | null;
   predicted_orders_p50?: number | null;
+  predicted_orders_p90?: number | null;
   prediction_confidence?: string | null;
   tool_coverage_pct?: number | null;
   updated_at?: string | null;
