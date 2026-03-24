@@ -272,6 +272,7 @@ def run_enrichment(
     # ===== STEP 5: Extract social links =====
     instagram_url = None
     facebook_url = None
+    social_data = {}
     if html:
         tools_attempted += 1
         t0 = time.time()
@@ -432,7 +433,24 @@ def run_enrichment(
     ig_username = instagram_data.get("username") if instagram_data else None
     brand_name_for_social = ig_username or (_extract_brand_name(domain) if domain else None)
 
-    if brand_name_for_social:
+    # Extract Facebook username from the URL found in HTML (more reliable than brand search)
+    fb_search_name = brand_name_for_social
+    if facebook_url:
+        import re as _re
+        _fb_match = _re.search(r'facebook\.com/(?:pages/[^/]+/)?([a-zA-Z0-9.]+)', facebook_url)
+        if _fb_match:
+            fb_search_name = _fb_match.group(1)
+
+    # Extract TikTok username from the URL found in HTML
+    tiktok_url = social_data.get("tiktok") if social_data else None
+    tiktok_username = brand_name_for_social
+    if tiktok_url:
+        import re as _re
+        _tt_match = _re.search(r'tiktok\.com/@?([a-zA-Z0-9_.]+)', tiktok_url)
+        if _tt_match:
+            tiktok_username = _tt_match.group(1)
+
+    if fb_search_name:
         # Facebook followers
         tools_attempted += 1
         t0 = time.time()
@@ -442,7 +460,7 @@ def run_enrichment(
                 fb_data = cached["data"]
                 ms = int((time.time() - t0) * 1000)
             else:
-                fb_data = searchapi_facebook_page(brand_name_for_social) or {}
+                fb_data = searchapi_facebook_page(fb_search_name) or {}
                 ms = int((time.time() - t0) * 1000)
                 if domain and fb_data:
                     cache_set(domain, "searchapi_facebook", fb_data)
@@ -456,11 +474,12 @@ def run_enrichment(
                 tools_succeeded += 1
             else:
                 result.fb_followers = 0
-                _step("facebook", "warn", ms, "no page found")
+                _step("facebook", "warn", ms, f"no page found (searched: {fb_search_name})")
         except Exception as e:
             ms = int((time.time() - t0) * 1000)
             _step("facebook", "fail", ms, str(e))
 
+    if tiktok_username:
         # TikTok followers
         tools_attempted += 1
         t0 = time.time()
@@ -476,7 +495,7 @@ def run_enrichment(
                 if _searchapi_token:
                     _resp = _requests.get(
                         "https://www.searchapi.io/api/v1/search",
-                        params={"engine": "tiktok_profile", "username": brand_name_for_social},
+                        params={"engine": "tiktok_profile", "username": tiktok_username},
                         headers={"Authorization": f"Bearer {_searchapi_token}"},
                         timeout=15,
                     )
@@ -492,7 +511,7 @@ def run_enrichment(
                 tools_succeeded += 1
             else:
                 result.tiktok_followers = 0
-                _step("tiktok", "warn", ms, "no profile found")
+                _step("tiktok", "warn", ms, f"no profile found (searched: {tiktok_username})")
         except Exception as e:
             ms = int((time.time() - t0) * 1000)
             _step("tiktok", "fail", ms, str(e))
