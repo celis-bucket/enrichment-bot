@@ -135,6 +135,42 @@ def run_retail_enrichment(
         ms = int((time.time() - t0) * 1000)
         _step("retail_scrape", "ok", ms, f"reused, {len(html) // 1024}KB")
 
+    # ===== STEP R0.5: Google Shopping Sellers =====
+    shopping_multibrand: List[str] = []
+    shopping_marketplaces: Dict[str, bool] = {}
+    shopping_other: List[str] = []
+    t0 = time.time()
+    try:
+        from retail.google_shopping_sellers import detect_sellers_from_shopping
+        sb_client = None
+        try:
+            from export.supabase_writer import get_client
+            sb_client = get_client()
+        except Exception:
+            pass
+
+        shop_result = detect_sellers_from_shopping(
+            brand_name, geography, supabase_client=sb_client,
+        )
+        ms = int((time.time() - t0) * 1000)
+        if shop_result["success"]:
+            sd = shop_result["data"]
+            shopping_multibrand = sd.get("multibrand_found", [])
+            shopping_marketplaces = sd.get("marketplaces_found", {})
+            shopping_other = sd.get("other_retailers", [])
+            parts = []
+            if shopping_multibrand:
+                parts.append(f"stores: {', '.join(shopping_multibrand[:3])}")
+            if shopping_marketplaces:
+                parts.append(f"mkts: {', '.join(shopping_marketplaces.keys())}")
+            parts.append(f"{len(sd.get('all_sellers', []))} sellers")
+            _step("retail_shopping", "ok", ms, " | ".join(parts))
+        else:
+            _step("retail_shopping", "warn", ms, shop_result.get("error", ""))
+    except Exception as e:
+        ms = int((time.time() - t0) * 1000)
+        _step("retail_shopping", "fail", ms, str(e))
+
     # ===== STEP R1: Distributors =====
     channels_attempted += 1
     t0 = time.time()
@@ -219,6 +255,7 @@ def run_retail_enrichment(
                 html, domain, brand_name, geography,
                 ig_bio=ig_bio, supabase_client=sb_client,
                 ig_username=ig_username, apollo_name=apollo_name,
+                shopping_sellers=shopping_multibrand,
             )
             ms = int((time.time() - t0) * 1000)
             mb_data = mb_result.get("data", {}) if mb_result.get("success") else {}
@@ -250,6 +287,7 @@ def run_retail_enrichment(
             from retail.detect_marketplaces import detect_marketplaces
             mp_result = detect_marketplaces(
                 html, domain, brand_name, geography, category=category,
+                shopping_marketplaces=shopping_marketplaces,
             )
             ms = int((time.time() - t0) * 1000)
             mp_data = mp_result.get("data", {}) if mp_result.get("success") else {}

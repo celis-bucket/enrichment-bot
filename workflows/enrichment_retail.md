@@ -43,15 +43,23 @@ result = run_retail_enrichment(
 
 ## Pipeline Steps
 
-| Step | Channel | Tool | Serper Queries | Output |
-|------|---------|------|---------------|--------|
+| Step | Channel | Tool | API Queries | Output |
+|------|---------|------|-------------|--------|
 | R0 | — | `web_scraper` (cached) | 0 | HTML for all subsequent steps |
-| R1 | Distribuidores | `detect_distributors` | 0-1 | `has_distributors: bool` |
-| R2 | Tiendas Propias | `detect_own_stores` | 1-2 (Places) | `has_own_stores: bool`, `own_store_count_col: int`, `own_store_count_mex: int` |
+| R0.5 | Shopping | `google_shopping_sellers` | 1 SearchAPI | Sellers classified: multibrand, marketplace, other |
+| R1 | Distribuidores | `detect_distributors` | 0-1 Serper | `has_distributors: bool` |
+| R2 | Tiendas Propias | `detect_own_stores` | 1-2 Serper (Places) | `has_own_stores: bool`, `own_store_count_col: int`, `own_store_count_mex: int` |
 | R3 | Tiendas Multimarca | `detect_multibrand_stores` | 0 | `has_multibrand_stores: bool`, `multibrand_store_names: list` |
-| R4 | Marketplaces | `detect_marketplaces` | 3-6 | `on_mercadolibre: bool`, `on_amazon: bool`, `on_rappi: bool` |
+| R4 | Marketplaces | `detect_marketplaces` | 0-6 Serper (skips if Shopping found) | `on_mercadolibre: bool`, `on_amazon: bool`, `on_rappi: bool` |
 
-**Total Serper queries per brand**: 4-9 (average ~6)
+**Total queries per brand**: 1 SearchAPI + 1-5 Serper (average ~4, down from ~6)
+
+### R0.5: Google Shopping Sellers
+Uses SearchAPI `engine=google_shopping` to find who sells the brand's products. One query returns up to 40 product listings with seller names. Sellers are classified as:
+- **Marketplace**: MercadoLibre, Amazon, Rappi, Linio, Dafiti → feeds R4
+- **Multibrand store**: matched against `retail_department_stores` vocabulary → feeds R3
+- **Self**: the brand's own store → skipped
+- **Other retailers**: unclassified stores (saved as supplementary info)
 
 ## Detection Heuristics
 

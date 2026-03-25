@@ -181,6 +181,7 @@ def detect_marketplaces(
     brand_name: str,
     geography: Optional[str] = None,
     category: Optional[str] = None,
+    shopping_marketplaces: Optional[Dict[str, bool]] = None,
 ) -> Dict[str, Any]:
     """
     Detect brand presence on MercadoLibre, Amazon, and Rappi.
@@ -200,35 +201,49 @@ def detect_marketplaces(
     """
     try:
         evidence_list = []
+        shop_mp = shopping_marketplaces or {}
 
         # Step 1: Check HTML for outbound marketplace links
         html_links = _check_html_links(html) if html else {}
 
         # Step 2: Google site: searches for each marketplace
+        # Skip Serper query if Google Shopping already detected the marketplace
+
         # MercadoLibre
-        ml_html = html_links.get("mercadolibre", {})
-        if ml_html.get("found"):
+        if shop_mp.get("MercadoLibre"):
             on_mercadolibre = True
-            evidence_list.append(f"MercadoLibre: link found in website HTML ({ml_html.get('snippet', '')})")
+            evidence_list.append("MercadoLibre: detected via Google Shopping")
         else:
-            ml_search = _search_marketplace(brand_name, "mercadolibre", domain, geography)
-            on_mercadolibre = ml_search["found"]
-            evidence_list.append(f"MercadoLibre: {ml_search['evidence']}")
+            ml_html = html_links.get("mercadolibre", {})
+            if ml_html.get("found"):
+                on_mercadolibre = True
+                evidence_list.append(f"MercadoLibre: link found in website HTML ({ml_html.get('snippet', '')})")
+            else:
+                ml_search = _search_marketplace(brand_name, "mercadolibre", domain, geography)
+                on_mercadolibre = ml_search["found"]
+                evidence_list.append(f"MercadoLibre: {ml_search['evidence']}")
 
         # Amazon
-        amz_html = html_links.get("amazon", {})
-        if amz_html.get("found"):
+        if shop_mp.get("Amazon"):
             on_amazon = True
-            evidence_list.append(f"Amazon: link found in website HTML ({amz_html.get('snippet', '')})")
+            evidence_list.append("Amazon: detected via Google Shopping")
         else:
-            amz_search = _search_marketplace(brand_name, "amazon", domain, geography)
-            on_amazon = amz_search["found"]
-            evidence_list.append(f"Amazon: {amz_search['evidence']}")
+            amz_html = html_links.get("amazon", {})
+            if amz_html.get("found"):
+                on_amazon = True
+                evidence_list.append(f"Amazon: link found in website HTML ({amz_html.get('snippet', '')})")
+            else:
+                amz_search = _search_marketplace(brand_name, "amazon", domain, geography)
+                on_amazon = amz_search["found"]
+                evidence_list.append(f"Amazon: {amz_search['evidence']}")
 
         # Rappi — only search if category is relevant or category is unknown
         on_rappi = None
         skip_rappi = category and category not in RAPPI_RELEVANT_CATEGORIES
-        if skip_rappi:
+        if shop_mp.get("Rappi"):
+            on_rappi = True
+            evidence_list.append("Rappi: detected via Google Shopping")
+        elif skip_rappi:
             evidence_list.append(f"Rappi: skipped (category '{category}' not CPG)")
             on_rappi = None
         else:

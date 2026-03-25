@@ -221,6 +221,7 @@ def detect_multibrand_stores(
     supabase_client=None,
     ig_username: Optional[str] = None,
     apollo_name: Optional[str] = None,
+    shopping_sellers: Optional[List[str]] = None,
 ) -> Dict[str, Any]:
     """
     Detect if a brand is sold through department/multi-brand stores.
@@ -338,6 +339,11 @@ def detect_multibrand_stores(
         if ig_stores:
             all_stores.update(ig_stores)
             evidence_list.append(f"IG bio mentions: {', '.join(ig_stores)}")
+
+        # Source D: Google Shopping sellers (pre-classified by orchestrator)
+        if shopping_sellers:
+            all_stores.update(shopping_sellers)
+            evidence_list.append(f"Google Shopping: {', '.join(shopping_sellers)}")
 
         store_names = sorted(all_stores)
         has_multibrand = len(store_names) > 0
