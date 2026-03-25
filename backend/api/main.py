@@ -328,6 +328,12 @@ def _build_v2_response(enrichment_result, prediction: dict) -> dict:
         "brand_demand_score": enrichment_result.brand_demand_score,
         "site_serp_coverage_score": enrichment_result.site_serp_coverage_score,
         "google_confidence": enrichment_result.google_confidence,
+        # HubSpot CRM
+        "hubspot_company_id": enrichment_result.hubspot_company_id,
+        "hubspot_company_url": enrichment_result.hubspot_company_url,
+        "hubspot_deal_count": enrichment_result.hubspot_deal_count,
+        "hubspot_deal_stage": enrichment_result.hubspot_deal_stage,
+        "hubspot_contact_exists": enrichment_result.hubspot_contact_exists,
         # Prediction
         "prediction": pred_model,
         # Execution meta
