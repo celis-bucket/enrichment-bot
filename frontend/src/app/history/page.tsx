@@ -22,6 +22,16 @@ function fmtDate(dateStr: string | null | undefined): string {
   });
 }
 
+function fmtShortDate(dateStr: string | null | undefined): string {
+  if (!dateStr) return '—';
+  const d = new Date(dateStr);
+  const dd = d.getDate().toString().padStart(2, '0');
+  const mm = (d.getMonth() + 1).toString().padStart(2, '0');
+  const hh = d.getHours().toString().padStart(2, '0');
+  const min = d.getMinutes().toString().padStart(2, '0');
+  return `${dd}/${mm} ${hh}:${min}`;
+}
+
 function ConfidenceBadge({ level }: { level: string | null | undefined }) {
   if (!level) return <span className="text-gray-400">—</span>;
   const colors: Record<string, string> = {
@@ -272,17 +282,18 @@ export default function HistoryPage() {
                   <th className="px-2 py-2.5 font-semibold whitespace-nowrap">Confianza</th>
                   <th className="px-2 py-2.5 font-semibold whitespace-nowrap">CRM</th>
                   <th className="px-2 py-2.5 font-semibold whitespace-nowrap">Contacto</th>
+                  <th className="px-2 py-2.5 font-semibold whitespace-nowrap">Fecha</th>
                   <th className="px-3 py-2.5 font-semibold w-[100px]"></th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-50">
                 {isLoading ? (
                   <tr>
-                    <td colSpan={11} className="px-4 py-12 text-center text-gray-400">Cargando...</td>
+                    <td colSpan={12} className="px-4 py-12 text-center text-gray-400">Cargando...</td>
                   </tr>
                 ) : companies.length === 0 ? (
                   <tr>
-                    <td colSpan={11} className="px-4 py-12 text-center text-gray-400">
+                    <td colSpan={12} className="px-4 py-12 text-center text-gray-400">
                       {search ? 'Ninguna empresa coincide con la búsqueda' : 'Aún no hay empresas enriquecidas'}
                     </td>
                   </tr>
@@ -315,6 +326,7 @@ export default function HistoryPage() {
                           <div className="text-gray-400 truncate max-w-[120px]">{c.contact_email}</div>
                         )}
                       </td>
+                      <td className="px-2 py-2.5 text-gray-400 whitespace-nowrap">{fmtShortDate(c.updated_at)}</td>
                       <td className="px-3 py-2.5">
                         <button
                           onClick={() => setSelectedDomain(c.domain || null)}
