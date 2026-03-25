@@ -161,6 +161,16 @@ function DetailDrawer({ domain, onClose }: { domain: string; onClose: () => void
                 <Row label="Confianza" value={data.prediction?.prediction_confidence} />
               </Section>
 
+              <Section title="HubSpot CRM">
+                <Row label="Estado" value={data.hubspot_company_id ? '✓ En CRM' : 'No encontrada'} />
+                <Row label="Negocios" value={data.hubspot_deal_count != null ? String(data.hubspot_deal_count) : undefined} />
+                <Row label="Etapa" value={data.hubspot_deal_stage} />
+                <Row label="Contacto en CRM" value={data.hubspot_contact_exists != null ? (data.hubspot_contact_exists ? 'Sí' : 'No') : undefined} />
+                <Row label="Ver en HubSpot" value={data.hubspot_company_url
+                  ? <a href={data.hubspot_company_url} target="_blank" rel="noreferrer" className="text-melonn-purple underline">Abrir</a>
+                  : undefined} />
+              </Section>
+
               <Section title="Contacto">
                 <Row label="Nombre" value={data.contact_name} />
                 <Row label="Email" value={data.contact_email} />
@@ -260,6 +270,7 @@ export default function HistoryPage() {
                   <th className="px-2 py-2.5 font-semibold whitespace-nowrap text-right">Conservador</th>
                   <th className="px-2 py-2.5 font-semibold whitespace-nowrap text-right">Optimista</th>
                   <th className="px-2 py-2.5 font-semibold whitespace-nowrap">Confianza</th>
+                  <th className="px-2 py-2.5 font-semibold whitespace-nowrap">CRM</th>
                   <th className="px-2 py-2.5 font-semibold whitespace-nowrap">Contacto</th>
                   <th className="px-3 py-2.5 font-semibold w-[100px]"></th>
                 </tr>
@@ -267,11 +278,11 @@ export default function HistoryPage() {
               <tbody className="divide-y divide-gray-50">
                 {isLoading ? (
                   <tr>
-                    <td colSpan={10} className="px-4 py-12 text-center text-gray-400">Cargando...</td>
+                    <td colSpan={11} className="px-4 py-12 text-center text-gray-400">Cargando...</td>
                   </tr>
                 ) : companies.length === 0 ? (
                   <tr>
-                    <td colSpan={10} className="px-4 py-12 text-center text-gray-400">
+                    <td colSpan={11} className="px-4 py-12 text-center text-gray-400">
                       {search ? 'Ninguna empresa coincide con la búsqueda' : 'Aún no hay empresas enriquecidas'}
                     </td>
                   </tr>
@@ -289,6 +300,15 @@ export default function HistoryPage() {
                       <td className="px-2 py-2.5 text-right font-semibold text-melonn-navy whitespace-nowrap">{fmt(c.predicted_orders_p50)}</td>
                       <td className="px-2 py-2.5 text-right text-gray-600 whitespace-nowrap">{fmt(c.predicted_orders_p90)}</td>
                       <td className="px-2 py-2.5 whitespace-nowrap"><ConfidenceBadge level={c.prediction_confidence} /></td>
+                      <td className="px-2 py-2.5 whitespace-nowrap">
+                        {c.hubspot_company_id ? (
+                          <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-melonn-green-50 text-melonn-green">
+                            {c.hubspot_deal_count ?? 0} {c.hubspot_deal_count === 1 ? 'deal' : 'deals'}
+                          </span>
+                        ) : (
+                          <span className="text-gray-400">—</span>
+                        )}
+                      </td>
                       <td className="px-2 py-2.5">
                         <div className="text-gray-600 truncate max-w-[120px]">{c.contact_name || '—'}</div>
                         {c.contact_email && (

@@ -34,6 +34,7 @@ from scoring.instagram_scoring import calculate_ig_size_score, calculate_ig_heal
 from ai.classify_category import classify_category
 from google_demand.score_demand import score_google_demand
 from contacts.apollo_enrichment import apollo_enrich
+from hubspot.hubspot_lookup import hubspot_enrich
 
 COST_PER_COMPANY_USD = 0.05
 
@@ -81,6 +82,7 @@ def run_enrichment(
     raw_url: str,
     batch_id: Optional[str] = None,
     skip_apollo: bool = False,
+    skip_hubspot: bool = False,
     skip_playwright: bool = True,
     enable_google_demand: bool = True,
     country: Optional[str] = None,
@@ -757,6 +759,41 @@ def run_enrichment(
             _step("geo_reconcile", "ok", ms, geo_source)
         else:
             _step("geo_reconcile", "warn", ms, "still UNKNOWN after all signals")
+
+    # ===== STEP 13: HubSpot CRM Lookup =====
+    if not skip_hubspot and domain:
+        tools_attempted += 1
+        t0 = time.time()
+        try:
+            cached = cache_get(domain, "hubspot_lookup") if (domain and not skip_cache) else None
+            if cached and cached.get("company_found") is not None:
+                hs_data = cached
+                ms = int((time.time() - t0) * 1000)
+            else:
+                hs_result = hubspot_enrich(domain, contact_email=result.contact_email)
+                ms = int((time.time() - t0) * 1000)
+                hs_data = hs_result.get("data", {}) if hs_result.get("success") else {}
+                if domain and hs_data:
+                    cache_set(domain, "hubspot_lookup", hs_data)
+
+            if hs_data.get("company_found"):
+                result.hubspot_company_id = hs_data.get("company_id")
+                result.hubspot_company_url = hs_data.get("hubspot_company_url")
+                result.hubspot_deal_count = hs_data.get("deal_count", 0)
+                result.hubspot_deal_stage = hs_data.get("deal_stage")
+                result.hubspot_contact_exists = 1 if hs_data.get("contact_exists") else 0
+                _step("hubspot", "ok", ms,
+                      f"found! {hs_data.get('deal_count', 0)} deals, "
+                      f"stage={hs_data.get('deal_stage', 'n/a')}, "
+                      f"contact={'yes' if hs_data.get('contact_exists') else 'no'}")
+                tools_succeeded += 1
+            else:
+                result.hubspot_contact_exists = 1 if hs_data.get("contact_exists") else 0
+                _step("hubspot", "ok", ms, "company not in HubSpot")
+                tools_succeeded += 1
+        except Exception as e:
+            ms = int((time.time() - t0) * 1000)
+            _step("hubspot", "fail", ms, str(e))
 
     # ===== FINALIZE =====
     result.tool_coverage_pct = round(tools_succeeded / max(tools_attempted, 1), 2)

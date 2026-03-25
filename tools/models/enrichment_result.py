@@ -91,6 +91,12 @@ SHEET_HEADERS = [
     "company_linkedin",
     "number_employes",
     "founded_year",
+    # HUBSPOT CRM
+    "hubspot_company_id",
+    "hubspot_company_url",
+    "hubspot_deal_count",
+    "hubspot_deal_stage",
+    "hubspot_contact_exists",
     # EXECUTION META
     "tool_coverage_pct",
     "total_runtime_sec",
@@ -166,6 +172,13 @@ class EnrichmentResult:
     number_employes: Optional[int] = None          # Apollo estimated_num_employees; None = not found
     founded_year: Optional[int] = None             # Apollo org founded_year; None = not found
     contacts_list: Optional[List[Dict[str, Any]]] = None  # Full contacts list (not exported to Sheet)
+
+    # HUBSPOT CRM
+    hubspot_company_id: Optional[str] = None        # HubSpot company record ID
+    hubspot_company_url: Optional[str] = None        # Direct link to HubSpot record
+    hubspot_deal_count: Optional[int] = None         # Number of associated deals
+    hubspot_deal_stage: Optional[str] = None         # Most advanced deal stage name
+    hubspot_contact_exists: Optional[int] = None     # 1 if primary contact in HubSpot, 0 if not
 
     # EXECUTION META
     tool_coverage_pct: Optional[float] = None    # 0-1

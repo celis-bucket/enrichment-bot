@@ -45,10 +45,13 @@ python tools/orchestrator/batch_runner.py urls.txt --sheet URL --batch-id my-run
 | 11 | Category | `ai/classify_category.py` (Claude Sonnet, tool_use) | category, category_confidence, category_evidence, company_name |
 | 12 | Apollo | `contacts/apollo_enrichment.py` (OFF by default in batch) | contact_name, contact_email, company_linkedin, number_employes |
 | 12b | Geo Reconcile | (inline in orchestrator) | geography, geography_confidence (fallback when HTML detection fails) |
+| 13 | HubSpot | `hubspot/hubspot_lookup.py` (ON by default) | hubspot_company_id, hubspot_company_url, hubspot_deal_count, hubspot_deal_stage, hubspot_contact_exists |
 
 **Geography reconciliation** (Step 12b): Fires only when geography is UNKNOWN. Uses fallback signals in priority order: (1) explicit `country` parameter, (2) Apollo company country, (3) catalog currency (COP→COL, MXN→MEX), (4) domain TLD.
 
 **Apollo contact search**: Uses bilingual titles (English + Spanish) and retries with seniority-based filter (owner/founder/c_suite/vp/director) when title search returns 0 results.
+
+**HubSpot CRM lookup** (Step 13): Checks if the enriched company already exists in HubSpot CRM. Uses `domain` from Step 1 to search companies (EQ match, then fallback to `hs_additional_domains` CONTAINS_TOKEN). If found, fetches associated deals and their stages. Also checks if `contact_email` from Apollo exists as a HubSpot contact. Controlled via `skip_hubspot` parameter (default: False). Requires `HUBSPOT_TOKEN` and `HUBSPOT_PORTAL_ID` in `.env`.
 
 **Post-pipeline** (API endpoint and batch CLI):
 | Step | Tool | Fields |

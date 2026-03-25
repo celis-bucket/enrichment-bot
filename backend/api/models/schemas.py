@@ -94,6 +94,12 @@ class EnrichmentV2Results(BaseModel):
     brand_demand_score: Optional[float] = None
     site_serp_coverage_score: Optional[float] = None
     google_confidence: Optional[float] = None
+    # HubSpot CRM
+    hubspot_company_id: Optional[str] = None
+    hubspot_company_url: Optional[str] = None
+    hubspot_deal_count: Optional[int] = None
+    hubspot_deal_stage: Optional[str] = None
+    hubspot_contact_exists: Optional[int] = None
     # Prediction
     prediction: Optional[OrdersPrediction] = None
     # Execution meta
@@ -128,6 +134,9 @@ class CompanyListItem(BaseModel):
     predicted_orders_p50: Optional[int] = None
     predicted_orders_p90: Optional[int] = None
     prediction_confidence: Optional[str] = None
+    hubspot_company_id: Optional[str] = None
+    hubspot_deal_count: Optional[int] = None
+    hubspot_deal_stage: Optional[str] = None
     tool_coverage_pct: Optional[float] = None
     updated_at: Optional[str] = None
 

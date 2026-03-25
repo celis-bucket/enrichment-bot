@@ -75,6 +75,12 @@ export interface EnrichmentV2Results {
   brand_demand_score?: number | null;
   site_serp_coverage_score?: number | null;
   google_confidence?: number | null;
+  // HubSpot CRM
+  hubspot_company_id?: string | null;
+  hubspot_company_url?: string | null;
+  hubspot_deal_count?: number | null;
+  hubspot_deal_stage?: string | null;
+  hubspot_contact_exists?: number | null;
   // Prediction
   prediction?: OrdersPrediction | null;
   // Execution meta
@@ -107,6 +113,9 @@ export interface CompanyListItem {
   predicted_orders_p50?: number | null;
   predicted_orders_p90?: number | null;
   prediction_confidence?: string | null;
+  hubspot_company_id?: string | null;
+  hubspot_deal_count?: number | null;
+  hubspot_deal_stage?: string | null;
   tool_coverage_pct?: number | null;
   updated_at?: string | null;
 }

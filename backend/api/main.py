@@ -458,6 +458,7 @@ async def list_companies(
             "id,domain,company_name,platform,category,geography,"
             "ig_followers,ig_size_score,ig_health_score,meta_active_ads_count,"
             "contact_name,contact_email,predicted_orders_p50,predicted_orders_p90,prediction_confidence,"
+            "hubspot_company_id,hubspot_deal_count,hubspot_deal_stage,"
             "tool_coverage_pct,updated_at"
         )
         rows = client.select(
@@ -557,6 +558,11 @@ async def get_company(domain: str, api_key: str = Depends(verify_api_key)):
             "brand_demand_score": row.get("brand_demand_score"),
             "site_serp_coverage_score": row.get("site_serp_coverage_score"),
             "google_confidence": row.get("google_confidence"),
+            "hubspot_company_id": row.get("hubspot_company_id"),
+            "hubspot_company_url": row.get("hubspot_company_url"),
+            "hubspot_deal_count": row.get("hubspot_deal_count"),
+            "hubspot_deal_stage": row.get("hubspot_deal_stage"),
+            "hubspot_contact_exists": row.get("hubspot_contact_exists"),
             "prediction": prediction,
             "tool_coverage_pct": row.get("tool_coverage_pct"),
             "total_runtime_sec": row.get("total_runtime_sec"),

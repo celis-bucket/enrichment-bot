@@ -9,6 +9,7 @@ import { TrafficDemandCardV2 } from './TrafficDemandCardV2';
 import { ContactCardV2 } from './ContactCardV2';
 import { MetaAdsCardV2 } from './MetaAdsCardV2';
 import { PredictionCardV2 } from './PredictionCardV2';
+import { HubSpotCardV2 } from './HubSpotCardV2';
 import { WorkflowReport } from '../WorkflowReport';
 import { FeedbackPanel } from '../FeedbackPanel';
 
@@ -146,6 +147,17 @@ export function ResultsDisplayV2({ results }: ResultsDisplayV2Props) {
           contactEmail={results.contact_email}
           companyLinkedin={results.company_linkedin}
           numberEmployes={results.number_employes}
+          domain={domain}
+          feedback={feedback}
+        />
+
+        {/* HubSpot CRM */}
+        <HubSpotCardV2
+          hubspotCompanyId={results.hubspot_company_id}
+          hubspotCompanyUrl={results.hubspot_company_url}
+          hubspotDealCount={results.hubspot_deal_count}
+          hubspotDealStage={results.hubspot_deal_stage}
+          hubspotContactExists={results.hubspot_contact_exists}
           domain={domain}
           feedback={feedback}
         />
