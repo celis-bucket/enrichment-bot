@@ -766,8 +766,8 @@ def run_enrichment(
         t0 = time.time()
         try:
             cached = cache_get(domain, "hubspot_lookup") if (domain and not skip_cache) else None
-            if cached and cached.get("company_found"):
-                hs_data = cached
+            if cached and cached.get("success") and cached.get("data", {}).get("company_found"):
+                hs_data = cached["data"]
                 ms = int((time.time() - t0) * 1000)
             else:
                 hs_result = hubspot_enrich(domain, contact_email=result.contact_email)
