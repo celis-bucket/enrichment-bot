@@ -148,10 +148,10 @@ def searchapi_facebook_page(identifier: str) -> Optional[Dict[str, Any]]:
         if data.get("error"):
             return None
 
-        page_info = data.get("page_info", data)
+        page_info = data.get("page") or data.get("page_info") or data
         return {
             "page_name": page_info.get("name"),
-            "page_id": page_info.get("page_id"),
+            "page_id": page_info.get("id") or page_info.get("page_id"),
             "followers": page_info.get("followers") or page_info.get("follower_count"),
         }
     except Exception:
