@@ -8,6 +8,7 @@ import type {
   DuplicateCheckResult,
   CompanyListResponse,
   FeedbackItem,
+  HubSpotDetail,
 } from './types';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
@@ -127,6 +128,17 @@ export async function getCompany(domain: string): Promise<EnrichmentV2Results> {
   );
   if (!response.ok) {
     throw new Error(`Company not found: ${domain}`);
+  }
+  return response.json();
+}
+
+export async function getHubSpotDetail(companyId: string): Promise<HubSpotDetail> {
+  const response = await fetch(
+    `${API_BASE}/api/v2/enrichment/hubspot/${encodeURIComponent(companyId)}`,
+    { headers: authHeaders() }
+  );
+  if (!response.ok) {
+    throw new Error(`HubSpot detail not found: ${companyId}`);
   }
   return response.json();
 }

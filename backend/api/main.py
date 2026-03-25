@@ -46,7 +46,9 @@ from api.models.schemas import (
     FeedbackRequest,
     FeedbackItem,
     FeedbackListResponse,
+    HubSpotDetailResponse,
 )
+from hubspot.hubspot_lookup import get_company_detail
 
 
 # Load environment variables
@@ -334,6 +336,8 @@ def _build_v2_response(enrichment_result, prediction: dict) -> dict:
         "hubspot_deal_count": enrichment_result.hubspot_deal_count,
         "hubspot_deal_stage": enrichment_result.hubspot_deal_stage,
         "hubspot_contact_exists": enrichment_result.hubspot_contact_exists,
+        "hubspot_lifecycle_label": enrichment_result.hubspot_lifecycle_label,
+        "hubspot_last_contacted": enrichment_result.hubspot_last_contacted,
         # Prediction
         "prediction": pred_model,
         # Execution meta
@@ -569,6 +573,8 @@ async def get_company(domain: str, api_key: str = Depends(verify_api_key)):
             "hubspot_deal_count": row.get("hubspot_deal_count"),
             "hubspot_deal_stage": row.get("hubspot_deal_stage"),
             "hubspot_contact_exists": row.get("hubspot_contact_exists"),
+            "hubspot_lifecycle_label": row.get("hubspot_lifecycle_label"),
+            "hubspot_last_contacted": row.get("hubspot_last_contacted"),
             "prediction": prediction,
             "tool_coverage_pct": row.get("tool_coverage_pct"),
             "total_runtime_sec": row.get("total_runtime_sec"),
@@ -576,6 +582,23 @@ async def get_company(domain: str, api_key: str = Depends(verify_api_key)):
             "workflow_log": row.get("workflow_execution_log") or [],
             "updated_at": row.get("updated_at"),
         }
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# ===== HubSpot Detail Endpoint =====
+
+@app.get("/api/v2/enrichment/hubspot/{company_id}", response_model=HubSpotDetailResponse,
+         tags=["HubSpot"])
+async def hubspot_detail(company_id: str, api_key: str = Depends(verify_api_key)):
+    """Get extended HubSpot company detail for the history modal."""
+    try:
+        result = get_company_detail(company_id)
+        if not result.get("success"):
+            raise HTTPException(status_code=404, detail=result.get("error", "Not found"))
+        return result["data"]
     except HTTPException:
         raise
     except Exception as e:

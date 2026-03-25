@@ -6,4 +6,6 @@ ALTER TABLE enriched_companies
   ADD COLUMN IF NOT EXISTS hubspot_company_url text,
   ADD COLUMN IF NOT EXISTS hubspot_deal_count integer,
   ADD COLUMN IF NOT EXISTS hubspot_deal_stage text,
-  ADD COLUMN IF NOT EXISTS hubspot_contact_exists integer;
+  ADD COLUMN IF NOT EXISTS hubspot_contact_exists integer,
+  ADD COLUMN IF NOT EXISTS hubspot_lifecycle_label text,
+  ADD COLUMN IF NOT EXISTS hubspot_last_contacted text;

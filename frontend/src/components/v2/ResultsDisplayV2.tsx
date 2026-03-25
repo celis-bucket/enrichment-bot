@@ -158,6 +158,8 @@ export function ResultsDisplayV2({ results }: ResultsDisplayV2Props) {
           hubspotDealCount={results.hubspot_deal_count}
           hubspotDealStage={results.hubspot_deal_stage}
           hubspotContactExists={results.hubspot_contact_exists}
+          hubspotLifecycleLabel={results.hubspot_lifecycle_label}
+          hubspotLastContacted={results.hubspot_last_contacted}
           domain={domain}
           feedback={feedback}
         />

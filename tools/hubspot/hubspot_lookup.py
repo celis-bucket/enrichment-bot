@@ -71,6 +71,18 @@ STAGE_ORDER = {
 }
 
 
+LIFECYCLE_LABELS = {
+    "subscriber": "Suscriptor",
+    "lead": "Lead",
+    "marketingqualifiedlead": "Lead Marketing",
+    "salesqualifiedlead": "Lead Ventas",
+    "opportunity": "Oportunidad",
+    "customer": "Cliente",
+    "evangelist": "Evangelista",
+    "other": "Otro",
+}
+
+
 def _get_token() -> Optional[str]:
     """Get HUBSPOT_TOKEN from environment."""
     return os.getenv("HUBSPOT_TOKEN")
@@ -174,7 +186,8 @@ def search_company_by_domain(domain: str) -> Dict[str, Any]:
         return {"success": True, "data": {"found": False}, "error": None}
 
     url = f"{HUBSPOT_API_BASE}/crm/v3/objects/companies/search"
-    properties = ["name", "domain", "website", "hs_additional_domains", "hubspot_owner_id"]
+    properties = ["name", "domain", "website", "hs_additional_domains", "hubspot_owner_id",
+                  "lifecyclestage", "notes_last_contacted"]
 
     # Strategy 1: exact match on domain (fetch up to 10 to handle duplicates)
     body = {
@@ -189,21 +202,29 @@ def search_company_by_domain(domain: str) -> Dict[str, Any]:
         "limit": 10,
     }
 
-    data = _api_request("POST", url, json_body=body)
-    if data and data.get("total", 0) > 0:
-        company = _pick_best_company(data["results"])
+    def _build_found_result(company: dict, matched_via: str) -> dict:
+        cp = company["properties"]
+        lifecycle_raw = cp.get("lifecyclestage", "")
         return {
             "success": True,
             "data": {
                 "found": True,
                 "company_id": company["id"],
-                "company_name": company["properties"].get("name", ""),
-                "domain_matched": "domain",
+                "company_name": cp.get("name", ""),
+                "domain_matched": matched_via,
                 "hubspot_url": f"https://app.hubspot.com/contacts/{PORTAL_ID}/company/{company['id']}",
-                "owner_id": company["properties"].get("hubspot_owner_id", ""),
+                "owner_id": cp.get("hubspot_owner_id", ""),
+                "lifecycle_stage": lifecycle_raw,
+                "lifecycle_label": LIFECYCLE_LABELS.get(lifecycle_raw, lifecycle_raw or None),
+                "last_contacted": cp.get("notes_last_contacted"),
             },
             "error": None,
         }
+
+    data = _api_request("POST", url, json_body=body)
+    if data and data.get("total", 0) > 0:
+        company = _pick_best_company(data["results"])
+        return _build_found_result(company, "domain")
 
     # Strategy 2: search additional domains
     body["filterGroups"] = [{
@@ -217,18 +238,7 @@ def search_company_by_domain(domain: str) -> Dict[str, Any]:
     data = _api_request("POST", url, json_body=body)
     if data and data.get("total", 0) > 0:
         company = _pick_best_company(data["results"])
-        return {
-            "success": True,
-            "data": {
-                "found": True,
-                "company_id": company["id"],
-                "company_name": company["properties"].get("name", ""),
-                "domain_matched": "hs_additional_domains",
-                "hubspot_url": f"https://app.hubspot.com/contacts/{PORTAL_ID}/company/{company['id']}",
-                "owner_id": company["properties"].get("hubspot_owner_id", ""),
-            },
-            "error": None,
-        }
+        return _build_found_result(company, "hs_additional_domains")
 
     return {"success": True, "data": {"found": False}, "error": None}
 
@@ -340,6 +350,101 @@ def check_contact_exists(email: str) -> Dict[str, Any]:
     return {"success": True, "data": {"exists": False}, "error": None}
 
 
+def get_company_detail(company_id: str) -> Dict[str, Any]:
+    """
+    Fetch extended company info for the HubSpot detail modal.
+
+    Returns rich data: lifecycle, owner, activity dates, deals, contacts.
+    """
+    token = _get_token()
+    if not token:
+        return {"success": False, "data": {}, "error": "No HUBSPOT_TOKEN"}
+
+    try:
+        # 1. Fetch company with rich properties
+        props = (
+            "name,domain,createdate,hubspot_owner_id,lifecyclestage,hs_lead_status,"
+            "notes_last_contacted,notes_last_updated,num_notes,num_contacted_notes,"
+            "num_associated_contacts,num_associated_deals"
+        )
+        url = f"{HUBSPOT_API_BASE}/crm/v3/objects/companies/{company_id}"
+        company = _api_request("GET", url, params={"properties": props})
+        if not company:
+            return {"success": False, "data": {}, "error": "Company not found"}
+
+        p = company.get("properties", {})
+
+        # 2. Resolve owner name
+        owner_name = None
+        owner_email = None
+        owner_id = p.get("hubspot_owner_id")
+        if owner_id:
+            owner_data = _api_request("GET", f"{HUBSPOT_API_BASE}/crm/v3/owners/{owner_id}")
+            if owner_data:
+                first = owner_data.get("firstName", "")
+                last = owner_data.get("lastName", "")
+                owner_name = f"{first} {last}".strip() or None
+                owner_email = owner_data.get("email")
+
+        # 3. Get deals (reuse existing function)
+        deals_result = get_company_deals(company_id)
+        deals_data = deals_result.get("data", {})
+
+        # 4. Get associated contacts (top 10)
+        contacts = []
+        contacts_url = f"{HUBSPOT_API_BASE}/crm/v4/objects/companies/{company_id}/associations/contacts"
+        assoc = _api_request("GET", contacts_url)
+        if assoc and assoc.get("results"):
+            contact_ids = [str(r["toObjectId"]) for r in assoc["results"][:10]]
+            batch_url = f"{HUBSPOT_API_BASE}/crm/v3/objects/contacts/batch/read"
+            batch_body = {
+                "inputs": [{"id": cid} for cid in contact_ids],
+                "properties": ["firstname", "lastname", "email", "jobtitle"],
+            }
+            batch = _api_request("POST", batch_url, json_body=batch_body)
+            if batch and batch.get("results"):
+                for c in batch["results"]:
+                    cp = c.get("properties", {})
+                    first = cp.get("firstname", "")
+                    last = cp.get("lastname", "")
+                    name = f"{first} {last}".strip()
+                    contacts.append({
+                        "name": name or None,
+                        "email": cp.get("email"),
+                        "title": cp.get("jobtitle"),
+                    })
+
+        lifecycle_raw = p.get("lifecyclestage", "")
+        lifecycle_label = LIFECYCLE_LABELS.get(lifecycle_raw, lifecycle_raw or None)
+
+        return {
+            "success": True,
+            "data": {
+                "company_name": p.get("name", ""),
+                "created_at": p.get("createdate"),
+                "lifecycle_stage": lifecycle_raw,
+                "lifecycle_label": lifecycle_label,
+                "lead_status": p.get("hs_lead_status"),
+                "owner_name": owner_name,
+                "owner_email": owner_email,
+                "last_contacted": p.get("notes_last_contacted"),
+                "last_activity": p.get("notes_last_updated"),
+                "total_activities": int(p.get("num_notes") or 0),
+                "contact_activities": int(p.get("num_contacted_notes") or 0),
+                "associated_contacts_count": int(p.get("num_associated_contacts") or 0),
+                "deals": deals_data.get("deals", []),
+                "deal_count": deals_data.get("deal_count", 0),
+                "most_advanced_stage": deals_data.get("most_advanced_stage", ""),
+                "contacts": contacts,
+                "hubspot_url": f"https://app.hubspot.com/contacts/{PORTAL_ID}/company/{company_id}",
+            },
+            "error": None,
+        }
+
+    except Exception as e:
+        return {"success": False, "data": {}, "error": str(e)}
+
+
 def hubspot_enrich(domain: str, contact_email: Optional[str] = None) -> Dict[str, Any]:
     """
     Main entry point. Orchestrates company search, deal lookup, and contact check.
@@ -378,6 +483,9 @@ def hubspot_enrich(domain: str, contact_email: Optional[str] = None) -> Dict[str
             "company_id": company_data.get("company_id"),
             "company_name": company_data.get("company_name"),
             "hubspot_company_url": company_data.get("hubspot_url"),
+            "lifecycle_stage": company_data.get("lifecycle_stage"),
+            "lifecycle_label": company_data.get("lifecycle_label"),
+            "last_contacted": company_data.get("last_contacted"),
             "deal_count": 0,
             "deal_stage": None,
             "deals": [],

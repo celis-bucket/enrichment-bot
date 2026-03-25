@@ -97,6 +97,8 @@ SHEET_HEADERS = [
     "hubspot_deal_count",
     "hubspot_deal_stage",
     "hubspot_contact_exists",
+    "hubspot_lifecycle_label",
+    "hubspot_last_contacted",
     # EXECUTION META
     "tool_coverage_pct",
     "total_runtime_sec",
@@ -179,6 +181,8 @@ class EnrichmentResult:
     hubspot_deal_count: Optional[int] = None         # Number of associated deals
     hubspot_deal_stage: Optional[str] = None         # Most advanced deal stage name
     hubspot_contact_exists: Optional[int] = None     # 1 if primary contact in HubSpot, 0 if not
+    hubspot_lifecycle_label: Optional[str] = None    # Cliente, Lead Ventas, etc.
+    hubspot_last_contacted: Optional[str] = None     # ISO date of last contact
 
     # EXECUTION META
     tool_coverage_pct: Optional[float] = None    # 0-1

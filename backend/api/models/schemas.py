@@ -100,6 +100,8 @@ class EnrichmentV2Results(BaseModel):
     hubspot_deal_count: Optional[int] = None
     hubspot_deal_stage: Optional[str] = None
     hubspot_contact_exists: Optional[int] = None
+    hubspot_lifecycle_label: Optional[str] = None
+    hubspot_last_contacted: Optional[str] = None
     # Prediction
     prediction: Optional[OrdersPrediction] = None
     # Execution meta
@@ -175,3 +177,43 @@ class FeedbackListResponse(BaseModel):
     domain: str
     feedback: List[FeedbackItem] = Field(default_factory=list)
     total: int = 0
+
+
+# ===== HubSpot Detail Models =====
+
+class HubSpotDeal(BaseModel):
+    """Single HubSpot deal"""
+    id: str = ""
+    name: str = ""
+    stage: str = ""
+    pipeline: str = ""
+    amount: str = ""
+    closedate: str = ""
+
+
+class HubSpotContact(BaseModel):
+    """Single HubSpot contact"""
+    name: Optional[str] = None
+    email: Optional[str] = None
+    title: Optional[str] = None
+
+
+class HubSpotDetailResponse(BaseModel):
+    """Extended HubSpot company detail for the history modal"""
+    company_name: str = ""
+    created_at: Optional[str] = None
+    lifecycle_stage: Optional[str] = None
+    lifecycle_label: Optional[str] = None
+    lead_status: Optional[str] = None
+    owner_name: Optional[str] = None
+    owner_email: Optional[str] = None
+    last_contacted: Optional[str] = None
+    last_activity: Optional[str] = None
+    total_activities: int = 0
+    contact_activities: int = 0
+    associated_contacts_count: int = 0
+    deals: List[HubSpotDeal] = Field(default_factory=list)
+    deal_count: int = 0
+    most_advanced_stage: str = ""
+    contacts: List[HubSpotContact] = Field(default_factory=list)
+    hubspot_url: str = ""

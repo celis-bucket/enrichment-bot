@@ -81,6 +81,8 @@ export interface EnrichmentV2Results {
   hubspot_deal_count?: number | null;
   hubspot_deal_stage?: string | null;
   hubspot_contact_exists?: number | null;
+  hubspot_lifecycle_label?: string | null;
+  hubspot_last_contacted?: string | null;
   // Prediction
   prediction?: OrdersPrediction | null;
   // Execution meta
@@ -135,4 +137,39 @@ export interface FeedbackItem {
   suggested_value?: string | null;
   created_by: string;
   created_at?: string | null;
+}
+
+export interface HubSpotDeal {
+  id: string;
+  name: string;
+  stage: string;
+  pipeline: string;
+  amount: string;
+  closedate: string;
+}
+
+export interface HubSpotContact {
+  name?: string | null;
+  email?: string | null;
+  title?: string | null;
+}
+
+export interface HubSpotDetail {
+  company_name: string;
+  created_at?: string | null;
+  lifecycle_stage?: string | null;
+  lifecycle_label?: string | null;
+  lead_status?: string | null;
+  owner_name?: string | null;
+  owner_email?: string | null;
+  last_contacted?: string | null;
+  last_activity?: string | null;
+  total_activities: number;
+  contact_activities: number;
+  associated_contacts_count: number;
+  deals: HubSpotDeal[];
+  deal_count: number;
+  most_advanced_stage: string;
+  contacts: HubSpotContact[];
+  hubspot_url: string;
 }

@@ -783,10 +783,12 @@ def run_enrichment(
                 result.hubspot_deal_count = hs_data.get("deal_count", 0)
                 result.hubspot_deal_stage = hs_data.get("deal_stage")
                 result.hubspot_contact_exists = 1 if hs_data.get("contact_exists") else 0
+                result.hubspot_lifecycle_label = hs_data.get("lifecycle_label")
+                result.hubspot_last_contacted = hs_data.get("last_contacted")
                 _step("hubspot", "ok", ms,
-                      f"found! {hs_data.get('deal_count', 0)} deals, "
-                      f"stage={hs_data.get('deal_stage', 'n/a')}, "
-                      f"contact={'yes' if hs_data.get('contact_exists') else 'no'}")
+                      f"found! {hs_data.get('lifecycle_label', '?')}, "
+                      f"{hs_data.get('deal_count', 0)} deals, "
+                      f"stage={hs_data.get('deal_stage', 'n/a')}")
                 tools_succeeded += 1
             else:
                 result.hubspot_contact_exists = 1 if hs_data.get("contact_exists") else 0
