@@ -112,6 +112,52 @@ def _api_request(method: str, url: str, json_body: dict = None, params: dict = N
     return None
 
 
+def _count_associations(company_id: str) -> int:
+    """Count total associations (deals + contacts + notes) for a company."""
+    total = 0
+    for obj_type in ["deals", "contacts", "notes"]:
+        url = f"{HUBSPOT_API_BASE}/crm/v4/objects/companies/{company_id}/associations/{obj_type}"
+        data = _api_request("GET", url)
+        if data and data.get("results"):
+            total += len(data["results"])
+    return total
+
+
+def _pick_best_company(results: List[dict]) -> dict:
+    """Pick the best company when duplicates exist for the same domain.
+
+    Priority:
+      1. Has hubspot_owner_id assigned
+      2. Has more associations (deals > contacts > notes)
+      3. Most recently created (newer record is usually the canonical one)
+
+    This handles HubSpot duplicate companies (e.g., "Basika" vs "BY BSIKA"
+    both with domain bybsika.com).
+    """
+    if len(results) == 1:
+        return results[0]
+
+    # Prefer companies with an owner assigned
+    owned = [r for r in results if r.get("properties", {}).get("hubspot_owner_id")]
+    if len(owned) == 1:
+        return owned[0]
+
+    # Score each candidate by associations (only check if few duplicates)
+    candidates = owned if owned else results
+    if len(candidates) <= 5:
+        scored = []
+        for c in candidates:
+            assoc_count = _count_associations(c["id"])
+            scored.append((assoc_count, c.get("createdAt", ""), c))
+        # Sort by: most associations desc, then newest created desc
+        scored.sort(key=lambda x: (x[0], x[1]), reverse=True)
+        return scored[0][2]
+
+    # Fallback: most recently created
+    candidates_sorted = sorted(candidates, key=lambda r: r.get("createdAt", ""), reverse=True)
+    return candidates_sorted[0]
+
+
 def search_company_by_domain(domain: str) -> Dict[str, Any]:
     """
     Search HubSpot for a company matching the given domain.
@@ -130,7 +176,7 @@ def search_company_by_domain(domain: str) -> Dict[str, Any]:
     url = f"{HUBSPOT_API_BASE}/crm/v3/objects/companies/search"
     properties = ["name", "domain", "website", "hs_additional_domains", "hubspot_owner_id"]
 
-    # Strategy 1: exact match on domain
+    # Strategy 1: exact match on domain (fetch up to 10 to handle duplicates)
     body = {
         "filterGroups": [{
             "filters": [{
@@ -140,12 +186,12 @@ def search_company_by_domain(domain: str) -> Dict[str, Any]:
             }]
         }],
         "properties": properties,
-        "limit": 1,
+        "limit": 10,
     }
 
     data = _api_request("POST", url, json_body=body)
     if data and data.get("total", 0) > 0:
-        company = data["results"][0]
+        company = _pick_best_company(data["results"])
         return {
             "success": True,
             "data": {
@@ -170,7 +216,7 @@ def search_company_by_domain(domain: str) -> Dict[str, Any]:
 
     data = _api_request("POST", url, json_body=body)
     if data and data.get("total", 0) > 0:
-        company = data["results"][0]
+        company = _pick_best_company(data["results"])
         return {
             "success": True,
             "data": {
