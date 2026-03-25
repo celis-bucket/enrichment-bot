@@ -219,6 +219,8 @@ def detect_multibrand_stores(
     geography: Optional[str] = None,
     ig_bio: Optional[str] = None,
     supabase_client=None,
+    ig_username: Optional[str] = None,
+    apollo_name: Optional[str] = None,
 ) -> Dict[str, Any]:
     """
     Detect if a brand is sold through department/multi-brand stores.
@@ -230,6 +232,8 @@ def detect_multibrand_stores(
         geography: 'COL', 'MEX', or None
         ig_bio: Instagram bio text (optional)
         supabase_client: SupabaseClient instance (optional, for DB lookups)
+        ig_username: Instagram username (optional, for fuzzy brand matching)
+        apollo_name: Apollo org name (optional, for fuzzy brand matching)
 
     Returns:
         Dict with:
@@ -309,13 +313,23 @@ def detect_multibrand_stores(
             evidence_list.append(f"Homepage mentions: {', '.join(homepage_stores)}")
 
         # Source B: Supabase DB — check if brand appears in scraped store data
+        # Uses fuzzy matching cascade: exact → candidates → token containment → fuzzy
         if supabase_client:
             try:
-                db_matches = find_brand_in_stores(supabase_client, brand_name, country=geography)
+                from retail.store_registry import find_brand_in_stores_fuzzy
+                db_matches = find_brand_in_stores_fuzzy(
+                    supabase_client, brand_name, country=geography,
+                    domain=domain, ig_username=ig_username,
+                    apollo_name=apollo_name,
+                )
                 if db_matches:
                     db_store_names = [m["store_name"] for m in db_matches]
                     all_stores.update(db_store_names)
-                    evidence_list.append(f"DB matches: {', '.join(db_store_names)}")
+                    match_type = db_matches[0].get("match_type", "exact")
+                    match_score = db_matches[0].get("match_score", 100)
+                    evidence_list.append(
+                        f"DB matches ({match_type}@{match_score}): {', '.join(db_store_names)}"
+                    )
             except Exception as e:
                 evidence_list.append(f"DB brand lookup failed: {str(e)}")
 

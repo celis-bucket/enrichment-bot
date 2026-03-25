@@ -36,6 +36,7 @@ from export.supabase_writer import (
 )
 from orchestrator.run_enrichment import run_enrichment
 
+from pydantic import BaseModel as PydanticBaseModel, Field as PydanticField
 from api.models.schemas import (
     HealthResponse,
     SyncEnrichmentRequest,
@@ -635,6 +636,83 @@ async def list_feedback(domain: str, api_key: str = Depends(verify_api_key)):
         return FeedbackListResponse(domain=domain, feedback=items, total=len(items))
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+# ===== Retail Enrichment Endpoint =====
+
+from retail.run_retail_enrichment import run_retail_enrichment
+
+
+class RetailAnalyzeRequest(PydanticBaseModel):
+    domain: str = PydanticField(..., description="E-commerce domain (e.g., youaresavvy.com)")
+    geography: str = PydanticField("", description="Country code: COL, MEX, or empty for both")
+
+
+@app.post("/api/v2/retail/analyze-stream", tags=["Retail"])
+async def retail_analyze_stream(request: RetailAnalyzeRequest, api_key: str = Depends(verify_api_key)):
+    """
+    SSE streaming retail channel enrichment.
+    Detects distributors, own stores, multi-brand stores, and marketplace presence.
+    """
+    step_queue: queue.Queue = queue.Queue()
+
+    def on_step(name: str, status: str, duration_ms: int, detail: str = ""):
+        step_queue.put({"type": "step", "step": name, "status": status,
+                        "duration_ms": duration_ms, "detail": detail})
+
+    def run_pipeline():
+        try:
+            # Read brand name from enriched_companies if available
+            brand_name = request.domain.split(".")[0]
+            geography = request.geography or None
+            category = None
+            try:
+                client = supabase_client or get_supabase_client()
+                rows = client.select(
+                    "enriched_companies",
+                    columns="company_name,geography,category",
+                    eq={"domain": request.domain},
+                    limit=1,
+                )
+                if rows:
+                    brand_name = rows[0].get("company_name") or brand_name
+                    geography = geography or rows[0].get("geography")
+                    category = rows[0].get("category")
+            except Exception:
+                pass
+
+            result = run_retail_enrichment(
+                domain=request.domain,
+                brand_name=brand_name,
+                geography=geography,
+                category=category,
+                skip_cache=True,
+                on_step=on_step,
+            )
+            step_queue.put({"type": "result", "data": result["data"], "steps": result["steps"]})
+        except Exception as e:
+            step_queue.put({"type": "error", "detail": str(e)})
+
+    async def event_generator():
+        loop = asyncio.get_event_loop()
+        pipeline_thread = threading.Thread(target=run_pipeline, daemon=True)
+        pipeline_thread.start()
+
+        while True:
+            try:
+                msg = await loop.run_in_executor(None, lambda: step_queue.get(timeout=300))
+            except Exception:
+                yield f"data: {json.dumps({'type': 'error', 'detail': 'Pipeline timeout'})}\n\n"
+                break
+
+            if msg["type"] == "step":
+                yield f"data: {json.dumps(msg)}\n\n"
+            elif msg["type"] in ("result", "error"):
+                yield f"data: {json.dumps(msg)}\n\n"
+                break
+
+    return StreamingResponse(event_generator(), media_type="text/event-stream",
+                             headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
 
 
 # Run with: uvicorn api.main:app --reload

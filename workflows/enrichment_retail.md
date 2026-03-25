@@ -70,10 +70,23 @@ result = run_retail_enrichment(
 ### R3: Tiendas Multimarca
 1. **Brand website**: Find "donde comprar"/"tiendas autorizadas" page → extract store names from text, image alt text, image filenames → match against controlled vocabulary in Supabase.
 2. **Homepage logos**: Some brands show retail partner logos on their homepage.
-3. **Supabase DB**: Query `retail_store_brands` for brand name (populated by periodic department store scrapers).
+3. **Supabase DB**: Fuzzy brand matching against `retail_store_brands` via cascade (see below).
 4. **IG bio**: Check for mentions of known department store names.
 
 **Controlled vocabulary**: `retail_department_stores` table in Supabase, seeded with major stores for COL and MEX.
+
+#### Fuzzy Brand Matching (Source 3)
+Brand names vary across sources (domain, LLM extraction, store APIs, Apollo). The matching uses a cascade in `tools/retail/fuzzy_brand_match.py`:
+
+| Stage | Strategy | Example | Min name length |
+|-------|----------|---------|-----------------|
+| 1 | Exact on normalized name | "savvy" = "savvy" | any |
+| 2 | Exact on candidate variants (domain, IG, Apollo, stripped suffixes) | "armatura" from "armatura colombia" | any |
+| 3a | Token containment (subset of words) | "beauty boost" ⊆ "beauty boost colombia" | 2+ words |
+| 3b | Substring containment | "savvy" in "youaresavvy" | 5+ chars, DB brand >= 4 chars, ratio >= 40% |
+| 4 | Fuzzy (`rapidfuzz.token_set_ratio` >= 85) | "loreal" ~ "l oreal" | 5+ chars |
+
+**False positive protection**: Names with <= 3 chars only use Stage 1. Names with <= 4 chars skip Stages 3b and 4. Substring match requires the shorter name to be >= 40% of the longer name's length.
 
 ### R4: Marketplaces + Rappi
 1. **HTML links**: Check for outbound links to mercadolibre, amazon, rappi domains.

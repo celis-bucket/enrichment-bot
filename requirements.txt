@@ -33,5 +33,8 @@ anthropic>=0.39.0
 # Browser automation
 playwright==1.40.0
 
+# Fuzzy matching
+rapidfuzz>=3.0.0
+
 # Utilities
 pyyaml==6.0.1

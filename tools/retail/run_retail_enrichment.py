@@ -44,6 +44,8 @@ def run_retail_enrichment(
     category: Optional[str] = None,
     ig_bio: Optional[str] = None,
     knowledge_graph: Optional[Dict] = None,
+    ig_username: Optional[str] = None,
+    apollo_name: Optional[str] = None,
     skip_cache: bool = False,
     on_step: Optional[Callable[[str, str, int, str], None]] = None,
 ) -> Dict[str, Any]:
@@ -216,6 +218,7 @@ def run_retail_enrichment(
             mb_result = detect_multibrand_stores(
                 html, domain, brand_name, geography,
                 ig_bio=ig_bio, supabase_client=sb_client,
+                ig_username=ig_username, apollo_name=apollo_name,
             )
             ms = int((time.time() - t0) * 1000)
             mb_data = mb_result.get("data", {}) if mb_result.get("success") else {}

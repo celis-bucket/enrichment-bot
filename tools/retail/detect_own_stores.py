@@ -25,6 +25,7 @@ sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
 
 from core.web_scraper import scrape_website
 from core.google_search import google_search
+from retail.store_registry import normalize_name
 
 # Patterns for store locator links
 STORE_LOCATOR_LINK_PATTERNS = [
@@ -233,11 +234,13 @@ def _places_search(brand_name: str, country: str) -> Dict[str, Any]:
     places = result["data"].get("places", [])
 
     # Filter places that actually match the brand name
-    brand_lower = brand_name.lower()
+    # Normalize both sides (strip accents, punctuation, spaces) to handle
+    # domain-as-name cases like "olecapilar" vs "Olé Capilar"
+    brand_norm = normalize_name(brand_name).replace(" ", "")
     matching = []
     for place in places:
-        title = place.get("title", "").lower()
-        if brand_lower in title or title in brand_lower:
+        title_norm = normalize_name(place.get("title", "")).replace(" ", "")
+        if brand_norm in title_norm or title_norm in brand_norm:
             matching.append({
                 "name": place.get("title", ""),
                 "address": place.get("address", ""),
