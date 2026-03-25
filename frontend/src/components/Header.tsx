@@ -20,24 +20,14 @@ export function Header() {
           </div>
           <nav className="flex gap-1">
             <Link
-              href="/"
+              href="/analyze-v2"
               className={`px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${
-                pathname === '/'
+                pathname === '/analyze-v2' || pathname === '/'
                   ? 'bg-melonn-purple text-white'
                   : 'text-melonn-purple-light hover:text-white hover:bg-melonn-navy-light'
               }`}
             >
-              Analyze
-            </Link>
-            <Link
-              href="/analyze-v2"
-              className={`px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${
-                pathname === '/analyze-v2'
-                  ? 'bg-melonn-green text-white'
-                  : 'text-melonn-green-light hover:text-white hover:bg-melonn-navy-light'
-              }`}
-            >
-              Analyze V2
+              Analizar
             </Link>
             <Link
               href="/history"
