@@ -39,8 +39,8 @@ SOCIAL_PLATFORMS = {
     },
     'facebook': {
         'domains': ['facebook.com', 'fb.com', 'fb.me'],
-        'pattern': r'(?:https?://)?(?:www\.)?(?:facebook\.com|fb\.com)/([a-zA-Z0-9.]+)',
-        'validate': lambda username: username not in ['sharer', 'share', 'login', 'groups', 'events'],
+        'pattern': r'(?:https?://)?(?:www\.)?(?:facebook\.com|fb\.com)/([a-zA-Z0-9._-]+)',
+        'validate': lambda username: username not in ['sharer', 'share', 'login', 'groups', 'events', 'p', 'profile.php'],
     },
     'tiktok': {
         'domains': ['tiktok.com'],
@@ -89,12 +89,13 @@ def extract_social_links_from_raw_html(html_content: str) -> Dict[str, str]:
     found_links = {}
 
     # Decode Unicode escapes (e.g. VTEX stores use \u002F for /)
-    html_content = html_content.replace('\\u002F', '/').replace('\\u003A', ':')
+    # Also decode JSON-escaped slashes (\/) found in JSON-LD sameAs arrays
+    html_content = html_content.replace('\\u002F', '/').replace('\\u003A', ':').replace('\\/', '/')
 
     # Direct regex patterns for each platform
     raw_patterns = {
         'instagram': (r'instagram\.com/([a-zA-Z0-9_.]+)', 'https://instagram.com/{}'),
-        'facebook': (r'facebook\.com/([a-zA-Z0-9_.]+)', 'https://facebook.com/{}'),
+        'facebook': (r'facebook\.com/(?:p/)?([a-zA-Z0-9_.-]+)', 'https://facebook.com/{}'),
         'tiktok': (r'tiktok\.com/@?([a-zA-Z0-9_.]+)', 'https://tiktok.com/@{}'),
         'youtube': (r'youtube\.com/(?:c/|channel/|user/|@)?([a-zA-Z0-9_.-]+)', 'https://youtube.com/@{}'),
         'twitter': (r'(?:twitter|x)\.com/([a-zA-Z0-9_]+)', 'https://twitter.com/{}'),
@@ -106,7 +107,7 @@ def extract_social_links_from_raw_html(html_content: str) -> Dict[str, str]:
     # Exclusion lists for invalid usernames
     exclusions = {
         'instagram': {'p', 'tv', 'reel', 'explore', 'accounts', 'direct', 'stories'},
-        'facebook': {'sharer', 'share', 'login', 'groups', 'events', 'pages', 'watch'},
+        'facebook': {'sharer', 'share', 'login', 'groups', 'events', 'pages', 'watch', 'p', 'profile.php'},
         'tiktok': {'i18n', 'embed', 'business', 'ads', 'developers', 'tag', 'discover'},
         'youtube': {'watch', 'playlist', 'feed', 'shorts', 'results', 'channel'},
         'twitter': {'share', 'intent', 'i', 'home', 'explore', 'search', 'hashtag'},

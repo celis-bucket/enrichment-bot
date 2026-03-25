@@ -117,13 +117,15 @@ function DetailDrawer({ domain, onClose }: { domain: string; onClose: () => void
                 <Row label="Confianza" value={fmtPct(data.platform_confidence)} />
               </Section>
 
-              <Section title="Instagram">
-                <Row label="Seguidores" value={fmt(data.ig_followers)} />
-                <Row label="Score tamaño" value={data.ig_size_score} />
-                <Row label="Score salud" value={data.ig_health_score} />
-                <Row label="Perfil" value={data.instagram_url
+              <Section title="Redes Sociales">
+                <Row label="IG Seguidores" value={fmt(data.ig_followers)} />
+                <Row label="IG Score tamaño" value={data.ig_size_score} />
+                <Row label="IG Score salud" value={data.ig_health_score} />
+                <Row label="Instagram" value={data.instagram_url
                   ? <a href={data.instagram_url} target="_blank" rel="noreferrer" className="text-melonn-purple underline">{data.instagram_url}</a>
                   : undefined} />
+                <Row label="FB Seguidores" value={fmt(data.fb_followers)} />
+                <Row label="TikTok Seguidores" value={fmt(data.tiktok_followers)} />
               </Section>
 
               <Section title="Meta Ads">
@@ -150,11 +152,6 @@ function DetailDrawer({ domain, onClose }: { domain: string; onClose: () => void
                 <Row label="Brand demand" value={data.brand_demand_score != null ? data.brand_demand_score.toFixed(2) : undefined} />
                 <Row label="SERP coverage" value={data.site_serp_coverage_score != null ? data.site_serp_coverage_score.toFixed(2) : undefined} />
                 <Row label="Confianza" value={fmtPct(data.google_confidence)} />
-              </Section>
-
-              <Section title="Fulfillment">
-                <Row label="Operador logístico" value={data.fulfillment_provider} />
-                <Row label="Confianza" value={fmtPct(data.fulfillment_confidence)} />
               </Section>
 
               <Section title="Estimación de pedidos">

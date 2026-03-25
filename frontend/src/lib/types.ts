@@ -50,6 +50,8 @@ export interface EnrichmentV2Results {
   ig_followers?: number | null;
   ig_size_score?: number | null;
   ig_health_score?: number | null;
+  fb_followers?: number | null;
+  tiktok_followers?: number | null;
   // Company / Apollo
   company_linkedin?: string | null;
   contact_name?: string | null;
@@ -73,9 +75,6 @@ export interface EnrichmentV2Results {
   brand_demand_score?: number | null;
   site_serp_coverage_score?: number | null;
   google_confidence?: number | null;
-  // Fulfillment
-  fulfillment_provider?: string | null;
-  fulfillment_confidence?: number | null;
   // Prediction
   prediction?: OrdersPrediction | null;
   // Execution meta

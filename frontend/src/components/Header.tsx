@@ -30,6 +30,16 @@ export function Header() {
               Analyze
             </Link>
             <Link
+              href="/analyze-v2"
+              className={`px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${
+                pathname === '/analyze-v2'
+                  ? 'bg-melonn-green text-white'
+                  : 'text-melonn-green-light hover:text-white hover:bg-melonn-navy-light'
+              }`}
+            >
+              Analyze V2
+            </Link>
+            <Link
               href="/history"
               className={`px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${
                 pathname === '/history'

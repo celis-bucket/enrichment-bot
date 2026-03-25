@@ -25,7 +25,6 @@ from core.resolve_brand_url import resolve_brand_url
 from core.cache_manager import cache_get, cache_set
 from detection.detect_ecommerce_platform import detect_platform_from_html
 from detection.detect_geography import detect_geography_from_html
-from detection.detect_fulfillment_provider import detect_fulfillment_from_html
 from social.extract_social_links import extract_social_links_from_html, search_instagram_via_serper, search_facebook_via_serper
 from social.apify_instagram import get_instagram_metrics, extract_instagram_username
 from social.apify_meta_ads import get_meta_ads_count, get_meta_ads_multi_search, searchapi_facebook_page
@@ -437,7 +436,7 @@ def run_enrichment(
     fb_search_name = brand_name_for_social
     if facebook_url:
         import re as _re
-        _fb_match = _re.search(r'facebook\.com/(?:pages/[^/]+/)?([a-zA-Z0-9.]+)', facebook_url)
+        _fb_match = _re.search(r'facebook\.com/(?:p/|pages/[^/]+/)?([a-zA-Z0-9._-]+)', facebook_url)
         if _fb_match:
             fb_search_name = _fb_match.group(1)
 
@@ -615,34 +614,7 @@ def run_enrichment(
             ms = int((time.time() - t0) * 1000)
             _step("google_demand", "fail", ms, str(e))
 
-    # ===== STEP 10: Fulfillment (passive only) =====
-    if html:
-        tools_attempted += 1
-        t0 = time.time()
-        try:
-            cached = cache_get(domain, "fulfillment") if (domain and not skip_cache) else None
-            if cached and cached.get("success"):
-                fd = cached["data"]
-                ms = int((time.time() - t0) * 1000)
-            else:
-                ff_result = detect_fulfillment_from_html(html, result.clean_url)
-                ms = int((time.time() - t0) * 1000)
-                fd = ff_result.get("data", {}) if ff_result.get("success") else {}
-                if domain and fd:
-                    cache_set(domain, "fulfillment", fd)
-
-            if fd.get("primary_provider"):
-                result.fulfillment_provider = fd["primary_provider"]
-                result.fulfillment_confidence = fd.get("confidence", 0)
-                _step("fulfillment", "ok", ms, fd["primary_provider"])
-                tools_succeeded += 1
-            else:
-                _step("fulfillment", "warn", ms, "no provider detected")
-        except Exception as e:
-            ms = int((time.time() - t0) * 1000)
-            _step("fulfillment", "fail", ms, str(e))
-
-    # ===== STEP 11: Category classification (LLM) =====
+    # ===== STEP 10: Category classification (LLM) =====
     tools_attempted += 1
     t0 = time.time()
     try:

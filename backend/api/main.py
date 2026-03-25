@@ -303,6 +303,8 @@ def _build_v2_response(enrichment_result, prediction: dict) -> dict:
         "ig_followers": enrichment_result.ig_followers,
         "ig_size_score": enrichment_result.ig_size_score,
         "ig_health_score": enrichment_result.ig_health_score,
+        "fb_followers": enrichment_result.fb_followers,
+        "tiktok_followers": enrichment_result.tiktok_followers,
         # Company / Apollo
         "company_linkedin": enrichment_result.company_linkedin,
         "contact_name": enrichment_result.contact_name,
@@ -326,9 +328,6 @@ def _build_v2_response(enrichment_result, prediction: dict) -> dict:
         "brand_demand_score": enrichment_result.brand_demand_score,
         "site_serp_coverage_score": enrichment_result.site_serp_coverage_score,
         "google_confidence": enrichment_result.google_confidence,
-        # Fulfillment
-        "fulfillment_provider": enrichment_result.fulfillment_provider,
-        "fulfillment_confidence": enrichment_result.fulfillment_confidence,
         # Prediction
         "prediction": pred_model,
         # Execution meta
@@ -538,6 +537,8 @@ async def get_company(domain: str, api_key: str = Depends(verify_api_key)):
             "ig_followers": row.get("ig_followers"),
             "ig_size_score": row.get("ig_size_score"),
             "ig_health_score": row.get("ig_health_score"),
+            "fb_followers": row.get("fb_followers"),
+            "tiktok_followers": row.get("tiktok_followers"),
             "company_linkedin": row.get("company_linkedin"),
             "contact_name": row.get("contact_name"),
             "contact_email": row.get("contact_email"),
@@ -556,8 +557,6 @@ async def get_company(domain: str, api_key: str = Depends(verify_api_key)):
             "brand_demand_score": row.get("brand_demand_score"),
             "site_serp_coverage_score": row.get("site_serp_coverage_score"),
             "google_confidence": row.get("google_confidence"),
-            "fulfillment_provider": row.get("fulfillment_provider"),
-            "fulfillment_confidence": row.get("fulfillment_confidence"),
             "prediction": prediction,
             "tool_coverage_pct": row.get("tool_coverage_pct"),
             "total_runtime_sec": row.get("total_runtime_sec"),

@@ -3,34 +3,20 @@
 import { useState, useEffect } from 'react';
 import type { EnrichmentV2Results, FeedbackItem } from '@/lib/types';
 import { getFeedback } from '@/lib/api';
-import { CompanyOverviewCard } from './CompanyOverviewCard';
-import { CatalogCard } from './CatalogCard';
-import { TrafficDemandCard } from './TrafficDemandCard';
-import { ContactCard } from './ContactCard';
-import { MetaAdsCard } from './MetaAdsCard';
-import { PredictionCard } from './PredictionCard';
-import { WorkflowReport } from './WorkflowReport';
-import { FeedbackPanel } from './FeedbackPanel';
+import { CompanyOverviewCardV2 } from './CompanyOverviewCardV2';
+import { CatalogCardV2 } from './CatalogCardV2';
+import { TrafficDemandCardV2 } from './TrafficDemandCardV2';
+import { ContactCardV2 } from './ContactCardV2';
+import { MetaAdsCardV2 } from './MetaAdsCardV2';
+import { PredictionCardV2 } from './PredictionCardV2';
+import { WorkflowReport } from '../WorkflowReport';
+import { FeedbackPanel } from '../FeedbackPanel';
 
-interface ResultsDisplayProps {
+interface ResultsDisplayV2Props {
   results: EnrichmentV2Results;
 }
 
-function ScoreBadge({ score, label }: { score: number | null | undefined; label: string }) {
-  if (score == null) return null;
-  const color = score >= 70 ? 'bg-melonn-green-50 text-melonn-green'
-    : score >= 40 ? 'bg-melonn-orange-50 text-melonn-orange'
-    : 'bg-red-50 text-red-600';
-
-  return (
-    <div className="flex flex-col items-center">
-      <span className={`text-lg font-bold px-3 py-1 rounded-full font-heading ${color}`}>{score}</span>
-      <span className="text-xs text-melonn-navy/50 mt-1">{label}</span>
-    </div>
-  );
-}
-
-export function ResultsDisplay({ results }: ResultsDisplayProps) {
+export function ResultsDisplayV2({ results }: ResultsDisplayV2Props) {
   const [showLog, setShowLog] = useState(false);
   const [feedback, setFeedback] = useState<FeedbackItem[]>([]);
   const domain = results.domain || '';
@@ -46,7 +32,7 @@ export function ResultsDisplay({ results }: ResultsDisplayProps) {
       {/* Header: Company name + domain */}
       <div className="bg-white rounded-2xl border border-melonn-purple-50 shadow-sm p-5">
         <h2 className="text-xl font-bold text-melonn-navy font-heading">
-          {results.company_name || results.domain || 'Unknown'}
+          {results.company_name || results.domain || 'Desconocido'}
         </h2>
         {results.domain && results.company_name && (
           <p className="text-sm text-melonn-navy/50 mt-1">{results.domain}</p>
@@ -67,7 +53,7 @@ export function ResultsDisplay({ results }: ResultsDisplayProps) {
       </div>
 
       {/* Company Overview (full-width) */}
-      <CompanyOverviewCard
+      <CompanyOverviewCardV2
         geography={results.geography}
         geographyConfidence={results.geography_confidence}
         platform={results.platform}
@@ -84,35 +70,46 @@ export function ResultsDisplay({ results }: ResultsDisplayProps) {
 
       {/* Data Grid - 2 columns on desktop */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        {/* Instagram */}
-        {(results.instagram_url || results.ig_followers != null) && (
+        {/* Redes Sociales - Instagram, Facebook, TikTok */}
+        {(results.instagram_url || results.ig_followers != null || results.fb_followers != null || results.tiktok_followers != null) && (
           <div className="bg-white rounded-2xl border border-melonn-purple-50 shadow-sm p-5">
-            <h3 className="text-sm font-semibold text-melonn-navy font-heading mb-3">Instagram</h3>
-            <div className="flex items-center justify-between">
-              <div>
-                {results.instagram_url && (
-                  <a href={results.instagram_url} target="_blank" rel="noopener noreferrer"
-                     className="text-sm text-melonn-purple hover:text-melonn-purple-light transition-colors">
-                    {results.instagram_url.replace('https://www.instagram.com/', '@').replace(/\/$/, '')}
-                  </a>
-                )}
-                {results.ig_followers != null && (
-                  <p className="text-sm text-melonn-navy/70 mt-1">
-                    <span className="font-medium text-melonn-navy">{results.ig_followers.toLocaleString()}</span> followers
-                  </p>
-                )}
-              </div>
-              <div className="flex gap-4">
-                <ScoreBadge score={results.ig_size_score} label="Size" />
-                <ScoreBadge score={results.ig_health_score} label="Health" />
-              </div>
+            <h3 className="text-sm font-semibold text-melonn-navy font-heading mb-3">Redes Sociales</h3>
+            <div className="space-y-3">
+              {(results.instagram_url || results.ig_followers != null) && (
+                <div>
+                  <p className="text-xs text-melonn-navy/50 mb-0.5">Instagram</p>
+                  {results.instagram_url && (
+                    <a href={results.instagram_url} target="_blank" rel="noopener noreferrer"
+                       className="text-sm text-melonn-purple hover:text-melonn-purple-light transition-colors">
+                      {results.instagram_url.replace('https://instagram.com/', '@').replace('https://www.instagram.com/', '@').replace(/\/$/, '')}
+                    </a>
+                  )}
+                  {results.ig_followers != null && (
+                    <p className="text-sm text-melonn-navy/70">
+                      <span className="font-medium text-melonn-navy">{results.ig_followers.toLocaleString()}</span> seguidores
+                    </p>
+                  )}
+                </div>
+              )}
+              {results.fb_followers != null && results.fb_followers > 0 && (
+                <div className="flex items-center justify-between py-1.5 border-t border-melonn-purple-50/50">
+                  <span className="text-xs text-melonn-navy/50">Facebook</span>
+                  <span className="text-sm font-medium text-melonn-navy">{results.fb_followers.toLocaleString()} seguidores</span>
+                </div>
+              )}
+              {results.tiktok_followers != null && results.tiktok_followers > 0 && (
+                <div className="flex items-center justify-between py-1.5 border-t border-melonn-purple-50/50">
+                  <span className="text-xs text-melonn-navy/50">TikTok</span>
+                  <span className="text-sm font-medium text-melonn-navy">{results.tiktok_followers.toLocaleString()} seguidores</span>
+                </div>
+              )}
             </div>
             <FeedbackPanel domain={domain} section="instagram" existingFeedback={feedback} />
           </div>
         )}
 
-        {/* Product Catalog */}
-        <CatalogCard
+        {/* Catálogo de Productos */}
+        <CatalogCardV2
           productCount={results.product_count}
           avgPrice={results.avg_price}
           priceRangeMin={results.price_range_min}
@@ -122,8 +119,8 @@ export function ResultsDisplay({ results }: ResultsDisplayProps) {
           feedback={feedback}
         />
 
-        {/* Traffic & Demand */}
-        <TrafficDemandCard
+        {/* Tráfico Web */}
+        <TrafficDemandCardV2
           estimatedMonthlyVisits={results.estimated_monthly_visits}
           trafficConfidence={results.traffic_confidence}
           signalsUsed={results.signals_used}
@@ -134,16 +131,16 @@ export function ResultsDisplay({ results }: ResultsDisplayProps) {
           feedback={feedback}
         />
 
-        {/* META Ads */}
-        <MetaAdsCard
+        {/* Anuncios en META */}
+        <MetaAdsCardV2
           activeAdsCount={results.meta_active_ads_count}
           adLibraryUrl={results.meta_ad_library_url}
           domain={domain}
           feedback={feedback}
         />
 
-        {/* Contact & Company (Apollo) */}
-        <ContactCard
+        {/* Contactos y Empresa (Apollo) */}
+        <ContactCardV2
           contacts={results.contacts}
           contactName={results.contact_name}
           contactEmail={results.contact_email}
@@ -153,22 +150,22 @@ export function ResultsDisplay({ results }: ResultsDisplayProps) {
           feedback={feedback}
         />
 
-        {/* Orders Prediction */}
-        <PredictionCard
+        {/* Órdenes Estimadas */}
+        <PredictionCardV2
           prediction={results.prediction}
           domain={domain}
           feedback={feedback}
         />
       </div>
 
-      {/* Workflow Log (expanded by default now) */}
+      {/* Workflow Log */}
       {results.workflow_log && results.workflow_log.length > 0 && (
         <div>
           <button
             onClick={() => setShowLog(!showLog)}
             className="text-xs text-melonn-navy/40 hover:text-melonn-navy/60 transition-colors"
           >
-            {showLog ? '▾ Hide' : '▸ Show'} execution log ({results.workflow_log.length} steps)
+            {showLog ? '▾ Ocultar' : '▸ Mostrar'} registro de ejecución ({results.workflow_log.length} pasos)
           </button>
           {showLog && (
             <div className="mt-2">

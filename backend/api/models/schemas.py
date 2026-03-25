@@ -69,6 +69,8 @@ class EnrichmentV2Results(BaseModel):
     ig_followers: Optional[int] = None
     ig_size_score: Optional[int] = None
     ig_health_score: Optional[int] = None
+    fb_followers: Optional[int] = None
+    tiktok_followers: Optional[int] = None
     # Company / Apollo
     company_linkedin: Optional[str] = None
     contact_name: Optional[str] = None
@@ -92,9 +94,6 @@ class EnrichmentV2Results(BaseModel):
     brand_demand_score: Optional[float] = None
     site_serp_coverage_score: Optional[float] = None
     google_confidence: Optional[float] = None
-    # Fulfillment
-    fulfillment_provider: Optional[str] = None
-    fulfillment_confidence: Optional[float] = None
     # Prediction
     prediction: Optional[OrdersPrediction] = None
     # Execution meta
