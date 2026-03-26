@@ -394,6 +394,7 @@ export default function LeadsPage() {
                   <th className="px-2 py-2.5 font-semibold whitespace-nowrap">Score</th>
                   <th className="px-2 py-2.5 font-semibold whitespace-nowrap text-right">IG Seguidores</th>
                   <th className="px-2 py-2.5 font-semibold whitespace-nowrap">Responsable</th>
+                  <th className="px-2 py-2.5 font-semibold whitespace-nowrap">Creado</th>
                   <th className="px-2 py-2.5 font-semibold whitespace-nowrap">Lead Stage</th>
                   <th className="px-2 py-2.5 font-semibold whitespace-nowrap">Ult. Cierre Perdido</th>
                   <th className="px-2 py-2.5 font-semibold whitespace-nowrap">Enrich</th>
@@ -404,11 +405,11 @@ export default function LeadsPage() {
               <tbody className="divide-y divide-gray-50">
                 {isLoading ? (
                   <tr>
-                    <td colSpan={9} className="px-4 py-12 text-center text-gray-400">Cargando...</td>
+                    <td colSpan={10} className="px-4 py-12 text-center text-gray-400">Cargando...</td>
                   </tr>
                 ) : leads.length === 0 ? (
                   <tr>
-                    <td colSpan={9} className="px-4 py-12 text-center text-gray-400">
+                    <td colSpan={10} className="px-4 py-12 text-center text-gray-400">
                       {search ? 'Ningun lead coincide con los filtros' : 'No hay leads. Haz click en "Sync HubSpot" para importar.'}
                     </td>
                   </tr>
@@ -445,6 +446,9 @@ export default function LeadsPage() {
                       <td className="px-2 py-2.5 text-right text-gray-600 whitespace-nowrap">{fmt(l.ig_followers)}</td>
                       <td className="px-2 py-2.5 text-gray-600 whitespace-nowrap truncate max-w-[120px]">
                         {l.hs_lead_owner || '--'}
+                      </td>
+                      <td className="px-2 py-2.5 text-gray-500 whitespace-nowrap text-xs">
+                        {l.hs_lead_created_at ? l.hs_lead_created_at.slice(0, 10) : '--'}
                       </td>
                       <td className="px-2 py-2.5 whitespace-nowrap"><StageBadge stage={l.hs_lead_stage} /></td>
                       <td className="px-2 py-2.5 text-gray-500 whitespace-nowrap text-xs">

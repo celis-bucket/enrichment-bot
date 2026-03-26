@@ -187,6 +187,7 @@ class LeadListItem(BaseModel):
     hs_lead_label: Optional[str] = None
     hs_lead_owner: Optional[str] = None
     hs_last_lost_deal_date: Optional[str] = None
+    hs_lead_created_at: Optional[str] = None
     overall_potential_score: Optional[int] = None
     potential_tier: Optional[str] = None
     predicted_orders_p90: Optional[int] = None

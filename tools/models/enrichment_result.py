@@ -118,6 +118,7 @@ SHEET_HEADERS = [
     "hs_lead_label",
     "hs_lead_owner",
     "hs_last_lost_deal_date",
+    "hs_lead_created_at",
     # EXECUTION META
     "tool_coverage_pct",
     "total_runtime_sec",
@@ -225,6 +226,7 @@ class EnrichmentResult:
     hs_lead_label: Optional[str] = None                # WARM, HOT, etc.
     hs_lead_owner: Optional[str] = None                # Lead owner name (resolved)
     hs_last_lost_deal_date: Optional[str] = None       # Date of last Cierre Perdido
+    hs_lead_created_at: Optional[str] = None           # Lead creation date in HubSpot
 
     # EXECUTION META
     tool_coverage_pct: Optional[float] = None    # 0-1

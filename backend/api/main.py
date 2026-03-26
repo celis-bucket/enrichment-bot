@@ -574,7 +574,7 @@ async def list_leads(
             "id,domain,clean_url,company_name,platform,geography,"
             "ig_followers,ig_size_score,lite_triage_score,worth_full_enrichment,"
             "enrichment_type,hubspot_company_id,hubspot_deal_stage,hubspot_deal_count,"
-            "hs_lead_stage,hs_lead_label,hs_lead_owner,hs_last_lost_deal_date,"
+            "hs_lead_stage,hs_lead_label,hs_lead_owner,hs_last_lost_deal_date,hs_lead_created_at,"
             "overall_potential_score,potential_tier,predicted_orders_p90,"
             "tool_coverage_pct,updated_at"
         )

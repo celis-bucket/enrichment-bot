@@ -167,6 +167,7 @@ export interface LeadListItem {
   hs_lead_label?: string | null;
   hs_lead_owner?: string | null;
   hs_last_lost_deal_date?: string | null;
+  hs_lead_created_at?: string | null;
   overall_potential_score?: number | null;
   potential_tier?: string | null;
   predicted_orders_p90?: number | null;

@@ -44,7 +44,7 @@ def fetch_all_active_leads():
     while True:
         body = {
             "filterGroups": [{"filters": [{"propertyName": "hs_pipeline_stage", "operator": "IN", "values": list(ACTIVE_STAGES)}]}],
-            "properties": ["hs_lead_name", "hs_primary_company_id", "hs_pipeline_stage", "hs_lead_label", "hubspot_owner_id", "hs_associated_company_domain"],
+            "properties": ["hs_lead_name", "hs_primary_company_id", "hs_pipeline_stage", "hs_lead_label", "hubspot_owner_id", "hs_associated_company_domain", "hs_createdate"],
             "limit": 100,
         }
         if after:
@@ -69,6 +69,7 @@ def fetch_all_active_leads():
                 "lead_stage": LEAD_STAGE_MAP.get(p.get("hs_pipeline_stage", ""), p.get("hs_pipeline_stage", "")),
                 "lead_label": p.get("hs_lead_label") or "",
                 "owner_id": p.get("hubspot_owner_id") or "",
+                "created_at": (p.get("hs_createdate") or "")[:10],
             })
 
         paging = data.get("paging", {}).get("next", {})
@@ -243,6 +244,8 @@ def main():
             update["hs_lead_owner"] = owner_name
         if lost_date:
             update["hs_last_lost_deal_date"] = lost_date
+        if lead.get("created_at"):
+            update["hs_lead_created_at"] = lead["created_at"]
 
         try:
             import requests as _req
