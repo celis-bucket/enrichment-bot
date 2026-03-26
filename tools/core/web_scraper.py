@@ -66,7 +66,8 @@ def scrape_website(
     headers: Optional[Dict[str, str]] = None,
     timeout: int = 30,
     follow_redirects: bool = True,
-    parse_html: bool = True
+    parse_html: bool = True,
+    max_retries: int = 3
 ) -> Dict[str, Any]:
     """
     Scrape a website and return HTML content with metadata.
@@ -77,6 +78,7 @@ def scrape_website(
         timeout: Request timeout in seconds (default: 30)
         follow_redirects: Whether to follow redirects (default: True)
         parse_html: Whether to parse HTML with BeautifulSoup (default: True)
+        max_retries: Maximum retry attempts (default: 3)
 
     Returns:
         Dict with:
@@ -87,7 +89,7 @@ def scrape_website(
     session = None
     try:
         # Create session with retry logic
-        session = create_session(max_retries=3)
+        session = create_session(max_retries=max_retries)
 
         # Set headers
         if headers is None:

@@ -85,6 +85,8 @@ SHEET_HEADERS = [
     "fulfillment_confidence",
     # META ADS
     "meta_active_ads_count",
+    # TIKTOK ADS
+    "tiktok_active_ads_count",
     # APOLLO
     "contact_name",
     "contact_email",
@@ -166,6 +168,9 @@ class EnrichmentResult:
 
     # META ADS
     meta_active_ads_count: Optional[int] = None       # active ads in Meta Ad Library; None = not found
+
+    # TIKTOK ADS
+    tiktok_active_ads_count: Optional[int] = None     # active ads in TikTok Ads Library; None = not found
 
     # APOLLO
     contact_name: Optional[str] = None

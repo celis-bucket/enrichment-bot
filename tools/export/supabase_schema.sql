@@ -64,6 +64,9 @@ CREATE TABLE enriched_companies (
   -- META ADS
   meta_active_ads_count     INTEGER,
 
+  -- TIKTOK ADS
+  tiktok_active_ads_count   INTEGER,
+
   -- APOLLO (primary contact as scalars for easy filtering)
   contact_name              TEXT,
   contact_email             TEXT,

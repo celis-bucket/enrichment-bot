@@ -190,14 +190,26 @@ def search_company_by_domain(domain: str) -> Dict[str, Any]:
                   "lifecyclestage", "notes_last_contacted"]
 
     # Strategy 1: exact match on domain (fetch up to 10 to handle duplicates)
+    # Search both with and without www. since HubSpot may store either variant
+    domain_no_www = domain.removeprefix("www.")
+    domain_with_www = f"www.{domain_no_www}"
     body = {
-        "filterGroups": [{
-            "filters": [{
-                "propertyName": "domain",
-                "operator": "EQ",
-                "value": domain,
-            }]
-        }],
+        "filterGroups": [
+            {
+                "filters": [{
+                    "propertyName": "domain",
+                    "operator": "EQ",
+                    "value": domain_no_www,
+                }]
+            },
+            {
+                "filters": [{
+                    "propertyName": "domain",
+                    "operator": "EQ",
+                    "value": domain_with_www,
+                }]
+            },
+        ],
         "properties": properties,
         "limit": 10,
     }

@@ -169,7 +169,7 @@ def detect_geography_from_html(
             for link in shipping_links[:1]:  # Just check first shipping link
                 shipping_url = urljoin(url, link.get('href'))
                 try:
-                    shipping_result = scrape_website(shipping_url, timeout=10)
+                    shipping_result = scrape_website(shipping_url, timeout=5, max_retries=1)
                     if shipping_result['success']:
                         shipping_text = shipping_result['data']['text']
                         shipping_scores = analyze_text_for_countries(shipping_text)

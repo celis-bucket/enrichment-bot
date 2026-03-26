@@ -8,6 +8,7 @@ import { CatalogCardV2 } from './CatalogCardV2';
 import { TrafficDemandCardV2 } from './TrafficDemandCardV2';
 import { ContactCardV2 } from './ContactCardV2';
 import { MetaAdsCardV2 } from './MetaAdsCardV2';
+import { TikTokAdsCardV2 } from './TikTokAdsCardV2';
 import { PredictionCardV2 } from './PredictionCardV2';
 import { HubSpotCardV2 } from './HubSpotCardV2';
 import { WorkflowReport } from '../WorkflowReport';
@@ -136,6 +137,14 @@ export function ResultsDisplayV2({ results }: ResultsDisplayV2Props) {
         <MetaAdsCardV2
           activeAdsCount={results.meta_active_ads_count}
           adLibraryUrl={results.meta_ad_library_url}
+          domain={domain}
+          feedback={feedback}
+        />
+
+        {/* Anuncios en TikTok */}
+        <TikTokAdsCardV2
+          activeAdsCount={results.tiktok_active_ads_count}
+          adLibraryUrl={results.tiktok_ads_library_url}
           domain={domain}
           feedback={feedback}
         />

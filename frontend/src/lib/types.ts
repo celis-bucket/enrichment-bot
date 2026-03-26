@@ -61,6 +61,9 @@ export interface EnrichmentV2Results {
   // Meta Ads
   meta_active_ads_count?: number | null;
   meta_ad_library_url?: string | null;
+  // TikTok Ads
+  tiktok_active_ads_count?: number | null;
+  tiktok_ads_library_url?: string | null;
   // Catalog
   product_count?: number | null;
   avg_price?: number | null;
