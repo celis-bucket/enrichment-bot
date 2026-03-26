@@ -268,9 +268,7 @@ export default function LeadsPage() {
   const [total, setTotal] = useState(0);
   const [worthFullCount, setWorthFullCount] = useState(0);
   const [fullyEnrichedCount, setFullyEnrichedCount] = useState(0);
-  const [page, setPage] = useState(1);
   const [search, setSearch] = useState('');
-  const [platform, setPlatform] = useState('');
   const [worthEnrich, setWorthEnrich] = useState('');
   const [enrichmentType, setEnrichmentType] = useState('');
   const [leadStage, setLeadStage] = useState('');
@@ -280,13 +278,12 @@ export default function LeadsPage() {
   const [enrichingDomain, setEnrichingDomain] = useState<string | null>(null);
   const [syncing, setSyncing] = useState(false);
   const [syncMsg, setSyncMsg] = useState('');
-  const limit = 25;
 
   const fetchLeads = useCallback(async () => {
     setIsLoading(true);
     try {
       const data = await getLeads({
-        page, limit, search, platform,
+        page: 1, limit: 5000, search,
         worth_full_enrichment: worthEnrich,
         enrichment_type: enrichmentType,
         lead_stage: leadStage,
@@ -301,12 +298,9 @@ export default function LeadsPage() {
     } finally {
       setIsLoading(false);
     }
-  }, [page, search, platform, worthEnrich, enrichmentType, leadStage, sortBy]);
+  }, [search, worthEnrich, enrichmentType, leadStage, sortBy]);
 
   useEffect(() => { fetchLeads(); }, [fetchLeads]);
-  useEffect(() => { setPage(1); }, [search, platform, worthEnrich, enrichmentType, leadStage, sortBy]);
-
-  const totalPages = Math.ceil(total / limit);
 
   const handleSync = async () => {
     setSyncing(true);
@@ -366,14 +360,6 @@ export default function LeadsPage() {
                        focus:outline-none focus:ring-2 focus:ring-melonn-purple/30 focus:border-melonn-purple
                        placeholder:text-gray-400"
           />
-          <FilterSelect label="Platform" value={platform} onChange={setPlatform} options={[
-            { value: '', label: 'Todas las plataformas' },
-            { value: 'Shopify', label: 'Shopify' },
-            { value: 'VTEX', label: 'VTEX' },
-            { value: 'WooCommerce', label: 'WooCommerce' },
-            { value: 'Custom', label: 'Custom' },
-            { value: 'facebook_commerce', label: 'Facebook Commerce' },
-          ]} />
           <FilterSelect label="Worth Enrich" value={worthEnrich} onChange={setWorthEnrich} options={[
             { value: '', label: 'Worth Enrich: Todos' },
             { value: 'true', label: 'Si' },
@@ -406,12 +392,10 @@ export default function LeadsPage() {
                 <tr className="bg-melonn-purple-50 text-melonn-navy text-left">
                   <th className="px-3 py-2.5 font-semibold whitespace-nowrap">Empresa</th>
                   <th className="px-2 py-2.5 font-semibold whitespace-nowrap">Score</th>
-                  <th className="px-2 py-2.5 font-semibold whitespace-nowrap">Platform</th>
-                  <th className="px-2 py-2.5 font-semibold whitespace-nowrap text-right">IG</th>
-                  <th className="px-2 py-2.5 font-semibold whitespace-nowrap">Pais</th>
+                  <th className="px-2 py-2.5 font-semibold whitespace-nowrap text-right">IG Seguidores</th>
+                  <th className="px-2 py-2.5 font-semibold whitespace-nowrap">Responsable</th>
                   <th className="px-2 py-2.5 font-semibold whitespace-nowrap">Lead Stage</th>
-                  <th className="px-2 py-2.5 font-semibold whitespace-nowrap">HubSpot</th>
-                  <th className="px-2 py-2.5 font-semibold whitespace-nowrap">Worth</th>
+                  <th className="px-2 py-2.5 font-semibold whitespace-nowrap">Ult. Cierre Perdido</th>
                   <th className="px-2 py-2.5 font-semibold whitespace-nowrap">Enrich</th>
                   <th className="px-3 py-2.5 font-semibold w-[140px]"></th>
                 </tr>
@@ -419,42 +403,52 @@ export default function LeadsPage() {
               <tbody className="divide-y divide-gray-50">
                 {isLoading ? (
                   <tr>
-                    <td colSpan={10} className="px-4 py-12 text-center text-gray-400">Cargando...</td>
+                    <td colSpan={8} className="px-4 py-12 text-center text-gray-400">Cargando...</td>
                   </tr>
                 ) : leads.length === 0 ? (
                   <tr>
-                    <td colSpan={10} className="px-4 py-12 text-center text-gray-400">
-                      {search || platform ? 'Ningun lead coincide con los filtros' : 'No hay leads. Haz click en "Sync HubSpot" para importar.'}
+                    <td colSpan={8} className="px-4 py-12 text-center text-gray-400">
+                      {search ? 'Ningun lead coincide con los filtros' : 'No hay leads. Haz click en "Sync HubSpot" para importar.'}
                     </td>
                   </tr>
                 ) : (
-                  leads.map((l) => (
+                  leads.map((l) => {
+                    const webUrl = l.clean_url || (l.domain ? `https://${l.domain}` : null);
+                    return (
                     <tr
                       key={l.id || l.domain}
                       className="hover:bg-melonn-purple-50/30 transition-colors cursor-pointer"
                       onClick={() => setSelectedDomain(l.domain || null)}
                     >
                       <td className="px-3 py-2.5">
-                        <div className="font-medium text-melonn-navy truncate max-w-[160px]">
+                        <div className="font-medium text-melonn-navy truncate max-w-[180px]">
                           {l.company_name || l.domain}
                         </div>
-                        <div className="text-gray-400 truncate max-w-[160px]">{l.domain}</div>
+                        {webUrl ? (
+                          <a
+                            href={webUrl}
+                            target="_blank"
+                            rel="noreferrer"
+                            onClick={(e) => e.stopPropagation()}
+                            className="text-xs text-melonn-purple hover:underline truncate block max-w-[180px]"
+                          >
+                            {l.domain}
+                          </a>
+                        ) : (
+                          <div className="text-xs text-gray-400 truncate max-w-[180px]">{l.domain || '--'}</div>
+                        )}
                       </td>
                       <td className="px-2 py-2.5 whitespace-nowrap">
                         <ScoreBar score={l.lite_triage_score} />
                       </td>
-                      <td className="px-2 py-2.5 text-gray-600 whitespace-nowrap">{l.platform || '--'}</td>
                       <td className="px-2 py-2.5 text-right text-gray-600 whitespace-nowrap">{fmt(l.ig_followers)}</td>
-                      <td className="px-2 py-2.5 text-gray-600 whitespace-nowrap">{l.geography || '--'}</td>
-                      <td className="px-2 py-2.5 whitespace-nowrap"><StageBadge stage={l.hs_lead_stage} /></td>
-                      <td className="px-2 py-2.5 whitespace-nowrap">
-                        {l.hubspot_deal_stage ? (
-                          <span className="text-gray-600 truncate">{l.hubspot_deal_stage}</span>
-                        ) : (
-                          <span className="text-gray-400">--</span>
-                        )}
+                      <td className="px-2 py-2.5 text-gray-600 whitespace-nowrap truncate max-w-[120px]">
+                        {l.hs_lead_owner || '--'}
                       </td>
-                      <td className="px-2 py-2.5 whitespace-nowrap"><WorthBadge worth={l.worth_full_enrichment} /></td>
+                      <td className="px-2 py-2.5 whitespace-nowrap"><StageBadge stage={l.hs_lead_stage} /></td>
+                      <td className="px-2 py-2.5 text-gray-500 whitespace-nowrap text-xs">
+                        {l.hs_last_lost_deal_date || '--'}
+                      </td>
                       <td className="px-2 py-2.5 whitespace-nowrap"><EnrichmentBadge type={l.enrichment_type} /></td>
                       <td className="px-3 py-2.5">
                         <div className="flex gap-1">
@@ -477,38 +471,19 @@ export default function LeadsPage() {
                         </div>
                       </td>
                     </tr>
-                  ))
+                    );
+                  })
                 )}
               </tbody>
             </table>
           </div>
 
-          {/* Pagination */}
-          {totalPages > 1 && (
-            <div className="flex items-center justify-between px-4 py-3 border-t border-gray-100">
-              <p className="text-sm text-gray-500">
-                Mostrando {(page - 1) * limit + 1}--{Math.min(page * limit, total)} de {total}
-              </p>
-              <div className="flex gap-1">
-                <button
-                  onClick={() => setPage((p) => Math.max(1, p - 1))}
-                  disabled={page === 1}
-                  className="px-3 py-1 rounded-md text-sm border border-gray-200 disabled:opacity-40
-                             hover:bg-melonn-purple-50 transition-colors"
-                >
-                  Anterior
-                </button>
-                <button
-                  onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-                  disabled={page === totalPages}
-                  className="px-3 py-1 rounded-md text-sm border border-gray-200 disabled:opacity-40
-                             hover:bg-melonn-purple-50 transition-colors"
-                >
-                  Siguiente
-                </button>
-              </div>
-            </div>
-          )}
+          {/* Row count */}
+          <div className="px-4 py-3 border-t border-gray-100">
+            <p className="text-sm text-gray-500">
+              Mostrando {leads.length} de {total} leads
+            </p>
+          </div>
         </div>
       </main>
 

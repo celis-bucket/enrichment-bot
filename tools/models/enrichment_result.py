@@ -116,6 +116,8 @@ SHEET_HEADERS = [
     "source",
     "hs_lead_stage",
     "hs_lead_label",
+    "hs_lead_owner",
+    "hs_last_lost_deal_date",
     # EXECUTION META
     "tool_coverage_pct",
     "total_runtime_sec",
@@ -221,6 +223,8 @@ class EnrichmentResult:
     source: Optional[str] = None                       # "hubspot_leads" | None
     hs_lead_stage: Optional[str] = None                # Lead pipeline stage name
     hs_lead_label: Optional[str] = None                # WARM, HOT, etc.
+    hs_lead_owner: Optional[str] = None                # Lead owner name (resolved)
+    hs_last_lost_deal_date: Optional[str] = None       # Date of last Cierre Perdido
 
     # EXECUTION META
     tool_coverage_pct: Optional[float] = None    # 0-1

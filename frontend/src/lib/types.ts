@@ -151,6 +151,7 @@ export interface CompanyListResponse {
 export interface LeadListItem {
   id?: string;
   domain?: string | null;
+  clean_url?: string | null;
   company_name?: string | null;
   platform?: string | null;
   geography?: string | null;
@@ -164,6 +165,8 @@ export interface LeadListItem {
   hubspot_deal_count?: number | null;
   hs_lead_stage?: string | null;
   hs_lead_label?: string | null;
+  hs_lead_owner?: string | null;
+  hs_last_lost_deal_date?: string | null;
   overall_potential_score?: number | null;
   potential_tier?: string | null;
   predicted_orders_p90?: number | null;

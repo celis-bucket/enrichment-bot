@@ -171,6 +171,7 @@ class LeadListItem(BaseModel):
     """Compact lead row for the leads dashboard"""
     id: Optional[str] = None
     domain: Optional[str] = None
+    clean_url: Optional[str] = None
     company_name: Optional[str] = None
     platform: Optional[str] = None
     geography: Optional[str] = None
@@ -184,6 +185,8 @@ class LeadListItem(BaseModel):
     hubspot_deal_count: Optional[int] = None
     hs_lead_stage: Optional[str] = None
     hs_lead_label: Optional[str] = None
+    hs_lead_owner: Optional[str] = None
+    hs_last_lost_deal_date: Optional[str] = None
     overall_potential_score: Optional[int] = None
     potential_tier: Optional[str] = None
     predicted_orders_p90: Optional[int] = None

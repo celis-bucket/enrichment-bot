@@ -546,7 +546,7 @@ async def list_companies(
 async def list_leads(
     api_key: str = Depends(verify_api_key),
     page: int = Query(1, ge=1),
-    limit: int = Query(25, ge=1, le=100),
+    limit: int = Query(25, ge=1, le=5000),
     search: str = Query("", description="Search by company name or domain"),
     platform: str = Query("", description="Filter by platform"),
     worth_full_enrichment: str = Query("", description="Filter: true/false"),
@@ -571,10 +571,10 @@ async def list_leads(
         order = f"{sort_field}.desc.nullslast"
 
         columns = (
-            "id,domain,company_name,platform,geography,"
+            "id,domain,clean_url,company_name,platform,geography,"
             "ig_followers,ig_size_score,lite_triage_score,worth_full_enrichment,"
             "enrichment_type,hubspot_company_id,hubspot_deal_stage,hubspot_deal_count,"
-            "hs_lead_stage,hs_lead_label,"
+            "hs_lead_stage,hs_lead_label,hs_lead_owner,hs_last_lost_deal_date,"
             "overall_potential_score,potential_tier,predicted_orders_p90,"
             "tool_coverage_pct,updated_at"
         )
@@ -594,6 +594,11 @@ async def list_leads(
         if worth_full_enrichment:
             wfe = worth_full_enrichment.lower() == "true"
             rows = [r for r in rows if r.get("worth_full_enrichment") == wfe]
+
+        # Exclude companies with Cierre ganado (already won customers)
+        rows = [r for r in rows if not (
+            r.get("hubspot_deal_stage") and "ganado" in (r["hubspot_deal_stage"]).lower()
+        )]
 
         total = len(rows)
         worth_full_count = sum(1 for r in rows if r.get("worth_full_enrichment"))
