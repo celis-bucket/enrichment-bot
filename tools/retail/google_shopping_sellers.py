@@ -24,9 +24,14 @@ if _TOOLS_DIR not in sys.path:
 from retail.store_registry import normalize_name
 
 # Known marketplace sellers per country (normalized → canonical)
+# COL: Rappi, MercadoLibre, Falabella, Homecenter
+# MEX: Amazon, MercadoLibre, Liverpool, Walmart, Coppel
 MARKETPLACE_NAMES_COL = {
     "mercadolibre": "MercadoLibre",
     "mercado libre": "MercadoLibre",
+    "rappi": "Rappi",
+    "falabella": "Falabella",
+    "homecenter": "Homecenter",
 }
 
 MARKETPLACE_NAMES_MEX = {
@@ -179,6 +184,11 @@ def detect_sellers_from_shopping(
         marketplace = _match_marketplace(seller_norm, mp_names)
         if marketplace:
             marketplaces_found[marketplace] = True
+            # Some marketplaces are ALSO multibrand (e.g., Falabella, Homecenter in COL)
+            # So we still check against known stores
+            store_match = _match_known_store(seller_norm, known_stores)
+            if store_match:
+                multibrand_found.add(store_match)
             continue
 
         # Check known multibrand stores
