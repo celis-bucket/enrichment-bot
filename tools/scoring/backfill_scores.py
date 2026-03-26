@@ -28,7 +28,7 @@ SCORE_COLUMNS = (
     "predicted_orders_p90,brand_demand_score,"
     "has_multibrand_stores,multibrand_store_names,"
     "has_own_stores,own_store_count_col,own_store_count_mex,"
-    "on_mercadolibre,on_amazon,on_rappi,marketplace_names,"
+    "on_mercadolibre,on_amazon,on_rappi,"
     "overall_potential_score"
 )
 
@@ -62,7 +62,7 @@ def backfill(dry_run: bool = False, force: bool = False):
             overall = scores["overall_potential_score"]
 
             if dry_run:
-                print(f"  [DRY] {domain:40s} → {tier:15s} overall={overall} "
+                print(f"  [DRY] {domain:40s} -> {tier:15s} overall={overall} "
                       f"size={scores['combined_size_score']} fit={scores['fit_score']}")
             else:
                 import requests
@@ -74,7 +74,7 @@ def backfill(dry_run: bool = False, force: bool = False):
                     timeout=15,
                 )
                 resp.raise_for_status()
-                print(f"  [OK]  {domain:40s} → {tier:15s} overall={overall}")
+                print(f"  [OK]  {domain:40s} -> {tier:15s} overall={overall}")
 
             updated += 1
 
