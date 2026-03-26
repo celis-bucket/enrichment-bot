@@ -44,6 +44,8 @@ from api.models.schemas import (
     DuplicateCheckResponse,
     CompanyListItem,
     CompanyListResponse,
+    LeadListItem,
+    LeadListResponse,
     FeedbackRequest,
     FeedbackItem,
     FeedbackListResponse,
@@ -536,6 +538,123 @@ async def list_companies(
     except Exception as e:
         print(f"[WARN] Company list failed: {e}")
         return CompanyListResponse(companies=[], total=0, page=page, limit=limit)
+
+
+# ===== Leads Dashboard Endpoints =====
+
+@app.get("/api/v2/leads", response_model=LeadListResponse, tags=["Leads"])
+async def list_leads(
+    api_key: str = Depends(verify_api_key),
+    page: int = Query(1, ge=1),
+    limit: int = Query(25, ge=1, le=100),
+    search: str = Query("", description="Search by company name or domain"),
+    platform: str = Query("", description="Filter by platform"),
+    worth_full_enrichment: str = Query("", description="Filter: true/false"),
+    enrichment_type: str = Query("", description="Filter: lite/full"),
+    lead_stage: str = Query("", description="Filter by lead stage"),
+    sort_by: str = Query("lite_triage_score", description="Sort by: lite_triage_score, ig_followers, updated_at"),
+):
+    """Paginated list of leads (source=hubspot_leads)."""
+    try:
+        client = supabase_client or get_supabase_client()
+
+        eq_filters = {"source": "hubspot_leads"}
+        if platform:
+            eq_filters["platform"] = platform
+        if enrichment_type:
+            eq_filters["enrichment_type"] = enrichment_type
+        if lead_stage:
+            eq_filters["hs_lead_stage"] = lead_stage
+
+        valid_sort = {"lite_triage_score", "ig_followers", "updated_at"}
+        sort_field = sort_by if sort_by in valid_sort else "lite_triage_score"
+        order = f"{sort_field}.desc.nullslast"
+
+        columns = (
+            "id,domain,company_name,platform,geography,"
+            "ig_followers,ig_size_score,lite_triage_score,worth_full_enrichment,"
+            "enrichment_type,hubspot_company_id,hubspot_deal_stage,hubspot_deal_count,"
+            "hs_lead_stage,hs_lead_label,"
+            "overall_potential_score,potential_tier,predicted_orders_p90,"
+            "tool_coverage_pct,updated_at"
+        )
+        rows = client.select(
+            "enriched_companies",
+            columns=columns,
+            eq=eq_filters,
+            order=order,
+        )
+
+        # Client-side filters
+        if search:
+            s = search.lower()
+            rows = [r for r in rows if s in (r.get("company_name") or "").lower()
+                    or s in (r.get("domain") or "").lower()]
+
+        if worth_full_enrichment:
+            wfe = worth_full_enrichment.lower() == "true"
+            rows = [r for r in rows if r.get("worth_full_enrichment") == wfe]
+
+        total = len(rows)
+        worth_full_count = sum(1 for r in rows if r.get("worth_full_enrichment"))
+        fully_enriched_count = sum(1 for r in rows if r.get("enrichment_type") == "full")
+
+        start = (page - 1) * limit
+        page_rows = rows[start:start + limit]
+
+        companies = [LeadListItem(**r) for r in page_rows]
+        return LeadListResponse(
+            companies=companies,
+            total=total,
+            page=page,
+            limit=limit,
+            total_leads=total,
+            worth_full_count=worth_full_count,
+            fully_enriched_count=fully_enriched_count,
+        )
+    except Exception as e:
+        print(f"[WARN] Leads list failed: {e}")
+        return LeadListResponse()
+
+
+@app.post("/api/v2/leads/sync", tags=["Leads"])
+async def sync_leads_endpoint(api_key: str = Depends(verify_api_key)):
+    """Sync leads from HubSpot and run lite enrichment for new ones. Returns SSE stream."""
+    from starlette.responses import StreamingResponse
+    import json as _json
+    import queue
+    import threading
+
+    progress_queue = queue.Queue()
+
+    def _on_progress(msg: str):
+        progress_queue.put({"type": "progress", "detail": msg})
+
+    def _run_sync():
+        try:
+            from hubspot.sync_leads import sync_leads
+            result = sync_leads(on_progress=_on_progress, max_enrich=0)
+            progress_queue.put({"type": "result", "data": result})
+        except Exception as e:
+            progress_queue.put({"type": "error", "detail": str(e)})
+        finally:
+            progress_queue.put(None)  # sentinel
+
+    thread = threading.Thread(target=_run_sync, daemon=True)
+    thread.start()
+
+    async def event_generator():
+        while True:
+            try:
+                msg = progress_queue.get(timeout=600)
+            except queue.Empty:
+                yield f"data: {_json.dumps({'type': 'error', 'detail': 'Sync timeout'})}\n\n"
+                break
+            if msg is None:
+                break
+            yield f"data: {_json.dumps(msg)}\n\n"
+
+    return StreamingResponse(event_generator(), media_type="text/event-stream")
 
 
 @app.get("/api/v2/enrichment/companies/{domain}", tags=["Companies"])

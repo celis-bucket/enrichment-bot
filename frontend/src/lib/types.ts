@@ -146,6 +146,41 @@ export interface CompanyListResponse {
   limit: number;
 }
 
+// ===== Lead Dashboard Types =====
+
+export interface LeadListItem {
+  id?: string;
+  domain?: string | null;
+  company_name?: string | null;
+  platform?: string | null;
+  geography?: string | null;
+  ig_followers?: number | null;
+  ig_size_score?: number | null;
+  lite_triage_score?: number | null;
+  worth_full_enrichment?: boolean | null;
+  enrichment_type?: string | null;
+  hubspot_company_id?: string | null;
+  hubspot_deal_stage?: string | null;
+  hubspot_deal_count?: number | null;
+  hs_lead_stage?: string | null;
+  hs_lead_label?: string | null;
+  overall_potential_score?: number | null;
+  potential_tier?: string | null;
+  predicted_orders_p90?: number | null;
+  tool_coverage_pct?: number | null;
+  updated_at?: string | null;
+}
+
+export interface LeadListResponse {
+  companies: LeadListItem[];
+  total: number;
+  page: number;
+  limit: number;
+  total_leads: number;
+  worth_full_count: number;
+  fully_enriched_count: number;
+}
+
 export interface FeedbackItem {
   id?: string;
   domain: string;

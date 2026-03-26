@@ -7,6 +7,7 @@ import type {
   PipelineStep,
   DuplicateCheckResult,
   CompanyListResponse,
+  LeadListResponse,
   FeedbackItem,
   HubSpotDetail,
 } from './types';
@@ -173,6 +174,91 @@ export async function submitFeedback(
     throw new Error(`Failed to submit feedback: HTTP ${response.status}`);
   }
   return response.json();
+}
+
+// ===== Leads Dashboard API =====
+
+export async function getLeads(params?: {
+  page?: number;
+  limit?: number;
+  search?: string;
+  platform?: string;
+  worth_full_enrichment?: string;
+  enrichment_type?: string;
+  lead_stage?: string;
+  sort_by?: string;
+}): Promise<LeadListResponse> {
+  const searchParams = new URLSearchParams();
+  if (params?.page) searchParams.set('page', String(params.page));
+  if (params?.limit) searchParams.set('limit', String(params.limit));
+  if (params?.search) searchParams.set('search', params.search);
+  if (params?.platform) searchParams.set('platform', params.platform);
+  if (params?.worth_full_enrichment) searchParams.set('worth_full_enrichment', params.worth_full_enrichment);
+  if (params?.enrichment_type) searchParams.set('enrichment_type', params.enrichment_type);
+  if (params?.lead_stage) searchParams.set('lead_stage', params.lead_stage);
+  if (params?.sort_by) searchParams.set('sort_by', params.sort_by);
+
+  const response = await fetch(
+    `${API_BASE}/api/v2/leads?${searchParams.toString()}`,
+    { headers: authHeaders() }
+  );
+  if (!response.ok) {
+    return { companies: [], total: 0, page: 1, limit: 25, total_leads: 0, worth_full_count: 0, fully_enriched_count: 0 };
+  }
+  return response.json();
+}
+
+export async function syncLeads(
+  onProgress: (detail: string) => void,
+  onResult: (data: Record<string, unknown>) => void,
+  onError: (error: string) => void,
+): Promise<void> {
+  const response = await fetch(`${API_BASE}/api/v2/leads/sync`, {
+    method: 'POST',
+    headers: authHeaders(),
+  });
+
+  if (!response.ok) {
+    onError(`Sync failed: HTTP ${response.status}`);
+    return;
+  }
+
+  const reader = response.body?.getReader();
+  if (!reader) {
+    onError('No response body');
+    return;
+  }
+
+  const decoder = new TextDecoder();
+  let buffer = '';
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+
+    buffer += decoder.decode(value, { stream: true });
+    const lines = buffer.split('\n');
+    buffer = lines.pop() || '';
+
+    for (const line of lines) {
+      if (!line.startsWith('data: ')) continue;
+      const jsonStr = line.slice(6).trim();
+      if (!jsonStr) continue;
+
+      try {
+        const msg = JSON.parse(jsonStr);
+        if (msg.type === 'progress') {
+          onProgress(msg.detail || '');
+        } else if (msg.type === 'result') {
+          onResult(msg.data || {});
+        } else if (msg.type === 'error') {
+          onError(msg.detail || 'Sync error');
+        }
+      } catch {
+        // skip malformed
+      }
+    }
+  }
 }
 
 export async function getFeedback(domain: string): Promise<FeedbackItem[]> {

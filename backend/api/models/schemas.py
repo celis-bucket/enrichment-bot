@@ -165,6 +165,43 @@ class CompanyListResponse(BaseModel):
     limit: int = 25
 
 
+# ===== Lead Dashboard Models =====
+
+class LeadListItem(BaseModel):
+    """Compact lead row for the leads dashboard"""
+    id: Optional[str] = None
+    domain: Optional[str] = None
+    company_name: Optional[str] = None
+    platform: Optional[str] = None
+    geography: Optional[str] = None
+    ig_followers: Optional[int] = None
+    ig_size_score: Optional[int] = None
+    lite_triage_score: Optional[int] = None
+    worth_full_enrichment: Optional[bool] = None
+    enrichment_type: Optional[str] = None
+    hubspot_company_id: Optional[str] = None
+    hubspot_deal_stage: Optional[str] = None
+    hubspot_deal_count: Optional[int] = None
+    hs_lead_stage: Optional[str] = None
+    hs_lead_label: Optional[str] = None
+    overall_potential_score: Optional[int] = None
+    potential_tier: Optional[str] = None
+    predicted_orders_p90: Optional[int] = None
+    tool_coverage_pct: Optional[float] = None
+    updated_at: Optional[str] = None
+
+
+class LeadListResponse(BaseModel):
+    """Paginated list of leads"""
+    companies: List[LeadListItem] = Field(default_factory=list)
+    total: int = 0
+    page: int = 1
+    limit: int = 25
+    total_leads: int = 0
+    worth_full_count: int = 0
+    fully_enriched_count: int = 0
+
+
 # ===== Feedback Models =====
 
 class FeedbackRequest(BaseModel):

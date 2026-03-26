@@ -108,6 +108,14 @@ SHEET_HEADERS = [
     "fit_score",
     "overall_potential_score",
     "potential_tier",
+    # ENRICHMENT LITE
+    "enrichment_type",
+    "lite_triage_score",
+    "worth_full_enrichment",
+    # LEAD SOURCE
+    "source",
+    "hs_lead_stage",
+    "hs_lead_label",
     # EXECUTION META
     "tool_coverage_pct",
     "total_runtime_sec",
@@ -203,6 +211,16 @@ class EnrichmentResult:
     fit_score: Optional[int] = None                   # 0-100
     overall_potential_score: Optional[int] = None      # 0-100
     potential_tier: Optional[str] = None               # Extraordinary|Very Good|Good|Low
+
+    # ENRICHMENT LITE
+    enrichment_type: Optional[str] = None              # "lite" | "full"
+    lite_triage_score: Optional[int] = None            # 0-100
+    worth_full_enrichment: Optional[bool] = None       # True/False
+
+    # LEAD SOURCE
+    source: Optional[str] = None                       # "hubspot_leads" | None
+    hs_lead_stage: Optional[str] = None                # Lead pipeline stage name
+    hs_lead_label: Optional[str] = None                # WARM, HOT, etc.
 
     # EXECUTION META
     tool_coverage_pct: Optional[float] = None    # 0-1
