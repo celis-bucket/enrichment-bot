@@ -397,17 +397,18 @@ export default function LeadsPage() {
                   <th className="px-2 py-2.5 font-semibold whitespace-nowrap">Lead Stage</th>
                   <th className="px-2 py-2.5 font-semibold whitespace-nowrap">Ult. Cierre Perdido</th>
                   <th className="px-2 py-2.5 font-semibold whitespace-nowrap">Enrich</th>
+                  <th className="px-2 py-2.5 font-semibold whitespace-nowrap text-right">P90 Orders</th>
                   <th className="px-3 py-2.5 font-semibold w-[140px]"></th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-50">
                 {isLoading ? (
                   <tr>
-                    <td colSpan={8} className="px-4 py-12 text-center text-gray-400">Cargando...</td>
+                    <td colSpan={9} className="px-4 py-12 text-center text-gray-400">Cargando...</td>
                   </tr>
                 ) : leads.length === 0 ? (
                   <tr>
-                    <td colSpan={8} className="px-4 py-12 text-center text-gray-400">
+                    <td colSpan={9} className="px-4 py-12 text-center text-gray-400">
                       {search ? 'Ningun lead coincide con los filtros' : 'No hay leads. Haz click en "Sync HubSpot" para importar.'}
                     </td>
                   </tr>
@@ -450,6 +451,9 @@ export default function LeadsPage() {
                         {l.hs_last_lost_deal_date || '--'}
                       </td>
                       <td className="px-2 py-2.5 whitespace-nowrap"><EnrichmentBadge type={l.enrichment_type} /></td>
+                      <td className="px-2 py-2.5 text-right font-semibold text-melonn-navy whitespace-nowrap">
+                        {l.enrichment_type === 'full' && l.predicted_orders_p90 ? fmt(l.predicted_orders_p90) : '--'}
+                      </td>
                       <td className="px-3 py-2.5">
                         <div className="flex gap-1">
                           <button

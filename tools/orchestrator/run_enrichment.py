@@ -565,7 +565,9 @@ def run_enrichment(
             ms = int((time.time() - t0) * 1000)
             _step("facebook", "fail", ms, str(e))
 
-    if tiktok_username:
+    # TikTok disabled for Colombia (not active yet)
+    _skip_tiktok = True
+    if tiktok_username and not _skip_tiktok:
         # TikTok followers
         tools_attempted += 1
         t0 = time.time()
@@ -602,9 +604,9 @@ def run_enrichment(
             ms = int((time.time() - t0) * 1000)
             _step("tiktok", "fail", ms, str(e))
 
-    # ===== STEP 6d: TikTok Ads (SearchAPI) =====
+    # ===== STEP 6d: TikTok Ads (SearchAPI) — disabled for Colombia =====
     tiktok_ads_search_terms = [t for t in [tiktok_username, brand_name_for_social] if t]
-    if tiktok_ads_search_terms:
+    if tiktok_ads_search_terms and not _skip_tiktok:
         tools_attempted += 1
         t0 = time.time()
         _step("tiktok_ads", "running", 0, f"searching: {tiktok_ads_search_terms}")
@@ -933,6 +935,7 @@ def run_enrichment(
         _step("potential_scoring", "fail", ms, str(e))
 
     # ===== FINALIZE =====
+    result.enrichment_type = "full"
     result.tool_coverage_pct = round(tools_succeeded / max(tools_attempted, 1), 2)
     result.total_runtime_sec = round(time.time() - start_time, 2)
     result.cost_estimate_usd = COST_PER_COMPANY_USD
