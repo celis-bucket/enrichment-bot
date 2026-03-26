@@ -41,6 +41,7 @@ class SupabaseClient:
         eq: dict = None,
         gte: dict = None,
         in_: dict = None,
+        is_null: dict = None,
         order: str = None,
         limit: int = None,
     ) -> list[dict]:
@@ -53,6 +54,7 @@ class SupabaseClient:
             eq: Equality filters {column: value}
             gte: Greater-than-or-equal filters {column: value}
             in_: IN filters {column: [values]}
+            is_null: NULL filters {column: True} for IS NULL, {column: False} for IS NOT NULL
             order: Order clause, e.g. "scanned_at.desc"
             limit: Max rows to return
 
@@ -73,6 +75,10 @@ class SupabaseClient:
             for col, vals in in_.items():
                 formatted = ",".join(str(v) for v in vals)
                 params[col] = f"in.({formatted})"
+
+        if is_null:
+            for col, should_be_null in is_null.items():
+                params[col] = "is.null" if should_be_null else "not.is.null"
 
         if order:
             params["order"] = order

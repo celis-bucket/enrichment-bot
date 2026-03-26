@@ -210,6 +210,7 @@ export default function PotentialPage() {
   const [geography, setGeography] = useState('');
   const [category, setCategory] = useState('');
   const [potentialTier, setPotentialTier] = useState('');
+  const [hideInHubSpot, setHideInHubSpot] = useState(true);
   const [isLoading, setIsLoading] = useState(true);
   const [selectedDomain, setSelectedDomain] = useState<string | null>(null);
   const limit = 25;
@@ -225,6 +226,7 @@ export default function PotentialPage() {
         geography,
         potential_tier: potentialTier,
         sort_by: 'overall_potential_score',
+        hide_in_hubspot: hideInHubSpot,
       });
       setCompanies(data.companies);
       setTotal(data.total);
@@ -233,10 +235,10 @@ export default function PotentialPage() {
     } finally {
       setIsLoading(false);
     }
-  }, [page, search, category, geography, potentialTier]);
+  }, [page, search, category, geography, potentialTier, hideInHubSpot]);
 
   useEffect(() => { fetchCompanies(); }, [fetchCompanies]);
-  useEffect(() => { setPage(1); }, [search, category, geography, potentialTier]);
+  useEffect(() => { setPage(1); }, [search, category, geography, potentialTier, hideInHubSpot]);
 
   const totalPages = Math.ceil(total / limit);
 
@@ -295,6 +297,15 @@ export default function PotentialPage() {
               { value: 'Low', label: 'Low' },
             ]}
           />
+          <label className="flex items-center gap-2 px-3 py-2 rounded-lg border border-gray-200 bg-white text-sm cursor-pointer select-none">
+            <input
+              type="checkbox"
+              checked={hideInHubSpot}
+              onChange={(e) => setHideInHubSpot(e.target.checked)}
+              className="rounded border-gray-300 text-melonn-purple focus:ring-melonn-purple/30"
+            />
+            <span className="text-gray-600 whitespace-nowrap">Ocultar en HubSpot</span>
+          </label>
         </div>
 
         {/* Table */}

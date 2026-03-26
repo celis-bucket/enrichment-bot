@@ -476,6 +476,7 @@ async def list_companies(
     geography: str = Query("", description="Filter by geography"),
     potential_tier: str = Query("", description="Filter by potential tier"),
     sort_by: str = Query("updated_at", description="Sort by: updated_at, overall_potential_score, predicted_orders_p90"),
+    hide_in_hubspot: bool = Query(False, description="Hide companies already in HubSpot CRM"),
 ):
     """Paginated list of enriched companies."""
     try:
@@ -489,6 +490,11 @@ async def list_companies(
             eq_filters["geography"] = geography
         if potential_tier:
             eq_filters["potential_tier"] = potential_tier
+
+        # NULL filters (hide companies already in HubSpot)
+        null_filters = None
+        if hide_in_hubspot:
+            null_filters = {"hubspot_company_id": True}
 
         # Sort order
         valid_sort_fields = {"updated_at", "overall_potential_score", "predicted_orders_p90"}
@@ -509,6 +515,7 @@ async def list_companies(
             "enriched_companies",
             columns=columns,
             eq=eq_filters if eq_filters else None,
+            is_null=null_filters,
             order=order,
         )
 
