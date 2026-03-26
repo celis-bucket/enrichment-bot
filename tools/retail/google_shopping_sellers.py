@@ -23,20 +23,25 @@ if _TOOLS_DIR not in sys.path:
 
 from retail.store_registry import normalize_name
 
-# Known marketplace sellers (normalized → canonical)
-MARKETPLACE_NAMES = {
+# Known marketplace sellers per country (normalized → canonical)
+MARKETPLACE_NAMES_COL = {
+    "mercadolibre": "MercadoLibre",
+    "mercado libre": "MercadoLibre",
+}
+
+MARKETPLACE_NAMES_MEX = {
     "mercadolibre": "MercadoLibre",
     "mercado libre": "MercadoLibre",
     "amazon": "Amazon",
     "amazoncom": "Amazon",
-    "amazon colombia": "Amazon",
     "amazon mexico": "Amazon",
-    "rappi": "Rappi",
-    "linio": "Linio",
-    "linio colombia": "Linio",
-    "dafiti": "Dafiti",
-    "dafiti colombia": "Dafiti",
+    "liverpool": "Liverpool",
+    "coppel": "Coppel",
+    "walmart": "Walmart",
 }
+
+# Fallback: union of both for when geography is unknown
+MARKETPLACE_NAMES_ALL = {**MARKETPLACE_NAMES_COL, **MARKETPLACE_NAMES_MEX}
 
 # Country code mapping for SearchAPI gl parameter
 GEO_TO_GL = {
@@ -165,8 +170,13 @@ def detect_sellers_from_shopping(
         if _is_self_seller(seller_norm, brand_norm_name):
             continue
 
-        # Check marketplaces
-        marketplace = _match_marketplace(seller_norm)
+        # Check marketplaces (country-specific list)
+        mp_names = (
+            MARKETPLACE_NAMES_COL if geography == "COL"
+            else MARKETPLACE_NAMES_MEX if geography == "MEX"
+            else MARKETPLACE_NAMES_ALL
+        )
+        marketplace = _match_marketplace(seller_norm, mp_names)
         if marketplace:
             marketplaces_found[marketplace] = True
             continue
@@ -205,10 +215,12 @@ def _is_self_seller(seller_norm: str, brand_norm: str) -> bool:
     return False
 
 
-def _match_marketplace(seller_norm: str) -> Optional[str]:
+def _match_marketplace(
+    seller_norm: str, mp_names: Dict[str, str],
+) -> Optional[str]:
     """Check if seller matches a known marketplace. Returns canonical name or None."""
     seller_nospace = seller_norm.replace(" ", "")
-    for pattern, canonical in MARKETPLACE_NAMES.items():
+    for pattern, canonical in mp_names.items():
         pattern_nospace = pattern.replace(" ", "")
         if pattern_nospace in seller_nospace or seller_nospace in pattern_nospace:
             return canonical

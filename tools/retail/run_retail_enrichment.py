@@ -24,7 +24,7 @@ import sys
 import time
 import json
 import argparse
-from typing import Optional, Dict, Any, Callable, List
+from typing import Optional, Dict, Any, Callable, List, Set
 from datetime import datetime, timezone
 
 # Allow imports from tools/ root
@@ -91,6 +91,7 @@ def run_retail_enrichment(
         "on_mercadolibre": None,
         "on_amazon": None,
         "on_rappi": None,
+        "marketplace_names": [],
         "retail_confidence": None,
     }
 
@@ -313,6 +314,20 @@ def run_retail_enrichment(
     except Exception as e:
         ms = int((time.time() - t0) * 1000)
         _step("retail_marketplaces", "fail", ms, str(e))
+
+    # ===== Build marketplace_names from all sources =====
+    mp_names: Set[str] = set()
+    # From Google Shopping
+    for mp_name in shopping_marketplaces.keys():
+        mp_names.add(mp_name)
+    # From marketplace detection (legacy fields)
+    if data.get("on_mercadolibre"):
+        mp_names.add("MercadoLibre")
+    if data.get("on_amazon"):
+        mp_names.add("Amazon")
+    if data.get("on_rappi"):
+        mp_names.add("Rappi")
+    data["marketplace_names"] = sorted(mp_names)
 
     # ===== FINALIZE =====
     data["retail_confidence"] = round(channels_succeeded / max(channels_attempted, 1), 2)
