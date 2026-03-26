@@ -101,6 +101,13 @@ SHEET_HEADERS = [
     "hubspot_contact_exists",
     "hubspot_lifecycle_label",
     "hubspot_last_contacted",
+    # POTENTIAL SCORING
+    "ecommerce_size_score",
+    "retail_size_score",
+    "combined_size_score",
+    "fit_score",
+    "overall_potential_score",
+    "potential_tier",
     # EXECUTION META
     "tool_coverage_pct",
     "total_runtime_sec",
@@ -188,6 +195,14 @@ class EnrichmentResult:
     hubspot_contact_exists: Optional[int] = None     # 1 if primary contact in HubSpot, 0 if not
     hubspot_lifecycle_label: Optional[str] = None    # Cliente, Lead Ventas, etc.
     hubspot_last_contacted: Optional[str] = None     # ISO date of last contact
+
+    # POTENTIAL SCORING
+    ecommerce_size_score: Optional[int] = None       # 0-100
+    retail_size_score: Optional[int] = None           # 0-100
+    combined_size_score: Optional[int] = None         # 0-100
+    fit_score: Optional[int] = None                   # 0-100
+    overall_potential_score: Optional[int] = None      # 0-100
+    potential_tier: Optional[str] = None               # Extraordinary|Very Good|Good|Low
 
     # EXECUTION META
     tool_coverage_pct: Optional[float] = None    # 0-1

@@ -40,6 +40,16 @@ export function Header() {
               History
             </Link>
             <Link
+              href="/potential"
+              className={`px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${
+                pathname === '/potential'
+                  ? 'bg-melonn-purple text-white'
+                  : 'text-melonn-purple-light hover:text-white hover:bg-melonn-navy-light'
+              }`}
+            >
+              Potential
+            </Link>
+            <Link
               href="/retail"
               className={`px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${
                 pathname === '/retail'

@@ -356,6 +356,13 @@ def _build_v2_response(enrichment_result, prediction: dict) -> dict:
         "hubspot_last_contacted": enrichment_result.hubspot_last_contacted,
         # Prediction
         "prediction": pred_model,
+        # Potential Scoring
+        "ecommerce_size_score": enrichment_result.ecommerce_size_score,
+        "retail_size_score": enrichment_result.retail_size_score,
+        "combined_size_score": enrichment_result.combined_size_score,
+        "fit_score": enrichment_result.fit_score,
+        "overall_potential_score": enrichment_result.overall_potential_score,
+        "potential_tier": enrichment_result.potential_tier,
         # Execution meta
         "tool_coverage_pct": enrichment_result.tool_coverage_pct,
         "total_runtime_sec": enrichment_result.total_runtime_sec,
@@ -467,6 +474,8 @@ async def list_companies(
     search: str = Query("", description="Search by company name or domain"),
     category: str = Query("", description="Filter by category"),
     geography: str = Query("", description="Filter by geography"),
+    potential_tier: str = Query("", description="Filter by potential tier"),
+    sort_by: str = Query("updated_at", description="Sort by: updated_at, overall_potential_score, predicted_orders_p90"),
 ):
     """Paginated list of enriched companies."""
     try:
@@ -478,6 +487,13 @@ async def list_companies(
             eq_filters["category"] = category
         if geography:
             eq_filters["geography"] = geography
+        if potential_tier:
+            eq_filters["potential_tier"] = potential_tier
+
+        # Sort order
+        valid_sort_fields = {"updated_at", "overall_potential_score", "predicted_orders_p90"}
+        sort_field = sort_by if sort_by in valid_sort_fields else "updated_at"
+        order = f"{sort_field}.desc.nullslast"
 
         # Fetch all matching rows (PostgREST doesn't support ILIKE via simple eq)
         columns = (
@@ -485,13 +501,15 @@ async def list_companies(
             "ig_followers,ig_size_score,ig_health_score,meta_active_ads_count,"
             "contact_name,contact_email,predicted_orders_p50,predicted_orders_p90,prediction_confidence,"
             "hubspot_company_id,hubspot_deal_count,hubspot_deal_stage,"
+            "ecommerce_size_score,retail_size_score,combined_size_score,"
+            "fit_score,overall_potential_score,potential_tier,"
             "tool_coverage_pct,updated_at"
         )
         rows = client.select(
             "enriched_companies",
             columns=columns,
             eq=eq_filters if eq_filters else None,
-            order="updated_at.desc",
+            order=order,
         )
 
         # Client-side search filter (PostgREST text search requires FTS setup)
@@ -606,6 +624,13 @@ async def get_company(domain: str, api_key: str = Depends(verify_api_key)):
             "hubspot_lifecycle_label": row.get("hubspot_lifecycle_label"),
             "hubspot_last_contacted": row.get("hubspot_last_contacted"),
             "prediction": prediction,
+            # Potential Scoring
+            "ecommerce_size_score": row.get("ecommerce_size_score"),
+            "retail_size_score": row.get("retail_size_score"),
+            "combined_size_score": row.get("combined_size_score"),
+            "fit_score": row.get("fit_score"),
+            "overall_potential_score": row.get("overall_potential_score"),
+            "potential_tier": row.get("potential_tier"),
             "tool_coverage_pct": row.get("tool_coverage_pct"),
             "total_runtime_sec": row.get("total_runtime_sec"),
             "cost_estimate_usd": row.get("cost_estimate_usd"),

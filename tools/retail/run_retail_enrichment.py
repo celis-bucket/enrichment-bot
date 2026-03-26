@@ -391,6 +391,30 @@ def _write_retail_to_supabase(domain: str, data: Dict[str, Any]) -> bool:
             timeout=30,
         )
         resp.raise_for_status()
+
+        # Re-compute potential scores with new retail data
+        try:
+            from scoring.potential_scoring import score_company
+            full_row = client.select(
+                "enriched_companies",
+                eq={"domain": domain},
+                limit=1,
+            )
+            if full_row:
+                scores = score_company(full_row[0])
+                requests.patch(
+                    f"{client.rest_url}/enriched_companies",
+                    headers=client.headers,
+                    params={"domain": f"eq.{domain}"},
+                    json=scores,
+                    timeout=15,
+                )
+                print(f"  [SCORE] {domain}: {scores['potential_tier']} "
+                      f"(overall={scores['overall_potential_score']}, "
+                      f"size={scores['combined_size_score']}, fit={scores['fit_score']})")
+        except Exception as score_err:
+            print(f"  [WARN] Re-scoring failed for {domain}: {score_err}")
+
         return True
 
     except Exception as e:

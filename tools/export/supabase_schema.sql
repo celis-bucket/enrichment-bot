@@ -83,6 +83,14 @@ CREATE TABLE enriched_companies (
   predicted_orders_p90      INTEGER,
   prediction_confidence     TEXT,
 
+  -- POTENTIAL SCORING
+  ecommerce_size_score      SMALLINT,
+  retail_size_score         SMALLINT,
+  combined_size_score       SMALLINT,
+  fit_score                 SMALLINT,
+  overall_potential_score    SMALLINT,
+  potential_tier            TEXT,
+
   -- EXECUTION META
   tool_coverage_pct         NUMERIC(4,3),
   total_runtime_sec         NUMERIC(8,2),
@@ -101,6 +109,8 @@ CREATE INDEX idx_ec_updated_at ON enriched_companies(updated_at DESC);
 CREATE INDEX idx_ec_batch_id ON enriched_companies(batch_id);
 CREATE INDEX idx_ec_category ON enriched_companies(category);
 CREATE INDEX idx_ec_geography ON enriched_companies(geography);
+CREATE INDEX idx_ec_potential ON enriched_companies(overall_potential_score DESC NULLS LAST);
+CREATE INDEX idx_ec_potential_tier ON enriched_companies(potential_tier);
 
 -- 3. AUTO-UPDATE updated_at ON UPSERT
 CREATE OR REPLACE FUNCTION update_updated_at()

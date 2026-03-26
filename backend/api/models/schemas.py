@@ -104,6 +104,13 @@ class EnrichmentV2Results(BaseModel):
     hubspot_last_contacted: Optional[str] = None
     # Prediction
     prediction: Optional[OrdersPrediction] = None
+    # Potential Scoring
+    ecommerce_size_score: Optional[int] = None
+    retail_size_score: Optional[int] = None
+    combined_size_score: Optional[int] = None
+    fit_score: Optional[int] = None
+    overall_potential_score: Optional[int] = None
+    potential_tier: Optional[str] = None
     # Execution meta
     tool_coverage_pct: Optional[float] = None
     total_runtime_sec: Optional[float] = None
@@ -139,6 +146,13 @@ class CompanyListItem(BaseModel):
     hubspot_company_id: Optional[str] = None
     hubspot_deal_count: Optional[int] = None
     hubspot_deal_stage: Optional[str] = None
+    # Potential Scoring
+    ecommerce_size_score: Optional[int] = None
+    retail_size_score: Optional[int] = None
+    combined_size_score: Optional[int] = None
+    fit_score: Optional[int] = None
+    overall_potential_score: Optional[int] = None
+    potential_tier: Optional[str] = None
     tool_coverage_pct: Optional[float] = None
     updated_at: Optional[str] = None
 

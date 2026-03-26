@@ -88,6 +88,13 @@ export interface EnrichmentV2Results {
   hubspot_last_contacted?: string | null;
   // Prediction
   prediction?: OrdersPrediction | null;
+  // Potential Scoring
+  ecommerce_size_score?: number | null;
+  retail_size_score?: number | null;
+  combined_size_score?: number | null;
+  fit_score?: number | null;
+  overall_potential_score?: number | null;
+  potential_tier?: string | null;
   // Execution meta
   tool_coverage_pct?: number | null;
   total_runtime_sec?: number | null;
@@ -121,6 +128,13 @@ export interface CompanyListItem {
   hubspot_company_id?: string | null;
   hubspot_deal_count?: number | null;
   hubspot_deal_stage?: string | null;
+  // Potential Scoring
+  ecommerce_size_score?: number | null;
+  retail_size_score?: number | null;
+  combined_size_score?: number | null;
+  fit_score?: number | null;
+  overall_potential_score?: number | null;
+  potential_tier?: string | null;
   tool_coverage_pct?: number | null;
   updated_at?: string | null;
 }

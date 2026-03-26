@@ -103,6 +103,8 @@ export async function getCompanies(params?: {
   search?: string;
   category?: string;
   geography?: string;
+  potential_tier?: string;
+  sort_by?: string;
 }): Promise<CompanyListResponse> {
   const searchParams = new URLSearchParams();
   if (params?.page) searchParams.set('page', String(params.page));
@@ -110,6 +112,8 @@ export async function getCompanies(params?: {
   if (params?.search) searchParams.set('search', params.search);
   if (params?.category) searchParams.set('category', params.category);
   if (params?.geography) searchParams.set('geography', params.geography);
+  if (params?.potential_tier) searchParams.set('potential_tier', params.potential_tier);
+  if (params?.sort_by) searchParams.set('sort_by', params.sort_by);
 
   const response = await fetch(
     `${API_BASE}/api/v2/enrichment/companies?${searchParams.toString()}`,

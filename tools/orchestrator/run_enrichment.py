@@ -912,6 +912,26 @@ def run_enrichment(
             ms = int((time.time() - t0) * 1000)
             _step("hubspot", "fail", ms, str(e))
 
+    # ===== STEP 14: Potential Scoring =====
+    t0 = time.time()
+    try:
+        from scoring.potential_scoring import score_company
+        score_input = result.to_dict()
+        scores = score_company(score_input)
+        result.ecommerce_size_score = scores["ecommerce_size_score"]
+        result.retail_size_score = scores["retail_size_score"]
+        result.combined_size_score = scores["combined_size_score"]
+        result.fit_score = scores["fit_score"]
+        result.overall_potential_score = scores["overall_potential_score"]
+        result.potential_tier = scores["potential_tier"]
+        ms = int((time.time() - t0) * 1000)
+        _step("potential_scoring", "ok", ms,
+              f"tier={scores['potential_tier']} overall={scores['overall_potential_score']} "
+              f"size={scores['combined_size_score']} fit={scores['fit_score']}")
+    except Exception as e:
+        ms = int((time.time() - t0) * 1000)
+        _step("potential_scoring", "fail", ms, str(e))
+
     # ===== FINALIZE =====
     result.tool_coverage_pct = round(tools_succeeded / max(tools_attempted, 1), 2)
     result.total_runtime_sec = round(time.time() - start_time, 2)
@@ -945,6 +965,7 @@ if __name__ == "__main__":
     print(f"  Traffic:    {r.estimated_monthly_visits} visits/mo")
     print(f"  Demand:     brand={r.brand_demand_score}, site={r.site_serp_coverage_score}")
     print(f"  Fulfillment:{r.fulfillment_provider}")
+    print(f"  Potential:  {r.potential_tier} (overall={r.overall_potential_score}, size={r.combined_size_score}, fit={r.fit_score})")
     print(f"  Coverage:   {r.tool_coverage_pct}")
     print(f"  Runtime:    {r.total_runtime_sec}s")
     print(f"  Cost:       ${r.cost_estimate_usd}")
