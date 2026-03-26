@@ -9,6 +9,7 @@ Dependencies: All tools in tools/, models/enrichment_result.py
 
 import os
 import sys
+import re
 import time
 import json
 from typing import Optional, List, Dict, Any, Callable
@@ -77,6 +78,36 @@ def _extract_brand_name(domain: str) -> str:
     if name == "www" and len(parts) > 1:
         name = parts[1]
     return name
+
+
+def _extract_brand_from_meta_title(meta_title: str, domain: str) -> Optional[str]:
+    """Extract clean brand name from meta title by splitting on common delimiters.
+
+    Examples:
+        "ONE HALF | Women's Clothes Made in Colombia" -> "ONE HALF"
+        "Shop Women's Clothing - One Half" -> "One Half"
+        "Armatura" -> "Armatura"
+    """
+    if not meta_title:
+        return _extract_brand_name(domain) if domain else None
+
+    segments = re.split(r'\s*[|·–—]\s*|\s+-\s+', meta_title)
+    segments = [s.strip() for s in segments if s.strip()]
+    if not segments:
+        return _extract_brand_name(domain) if domain else None
+
+    generic_re = re.compile(r'^(?:Welcome to|Shop|Buy|Official|Home)\s+', re.IGNORECASE)
+    candidate = generic_re.sub('', segments[0]).strip()
+
+    # If first segment is too long, try last segment (brand sometimes at end)
+    if len(candidate) > 40 and len(segments) > 1:
+        last = generic_re.sub('', segments[-1]).strip()
+        if 2 <= len(last) <= 40:
+            candidate = last
+
+    if 2 <= len(candidate) <= 40:
+        return candidate
+    return _extract_brand_name(domain) if domain else None
 
 
 def run_enrichment(
@@ -298,24 +329,77 @@ def run_enrichment(
                 _step("social_links", "ok", ms, f"IG found + {len(platforms_found)} platforms")
                 tools_succeeded += 1
             else:
-                _step("social_links", "warn", ms, "no Instagram in HTML, trying Serper...")
-                # Fallback: search for Instagram via Serper
-                t0_serper = time.time()
-                try:
-                    brand_name = meta_info.get("meta_title") or (_extract_brand_name(domain) if domain else None)
-                    if brand_name or domain:
-                        ig_from_serper = search_instagram_via_serper(brand_name or "", domain=domain)
+                _step("social_links", "warn", ms, "no Instagram in HTML, trying alternate domain...")
+
+                # Fallback 1: Try alternate country domain (handles geo-redirect sites)
+                alt_social_found = False
+                if result.geography and result.geography != "UNKNOWN" and domain:
+                    COUNTRY_TLDS = {
+                        "COL": ".com.co", "MEX": ".com.mx", "CHL": ".cl",
+                        "PER": ".com.pe", "ARG": ".com.ar", "ECU": ".com.ec",
+                        "PAN": ".com.pa", "CRI": ".co.cr", "DOM": ".com.do",
+                        "GTM": ".com.gt", "BOL": ".com.bo", "URY": ".com.uy",
+                        "PRY": ".com.py", "SLV": ".com.sv", "HND": ".com.hn",
+                    }
+                    country_tld = COUNTRY_TLDS.get(result.geography)
+                    if country_tld and not domain.endswith(country_tld):
+                        brand_name = _extract_brand_from_meta_title(meta_info.get("meta_title"), domain)
+                        domain_slug = _extract_brand_name(domain)
+                        # Build candidate domains: brand name (no spaces) + TLD, then domain slug + TLD
+                        candidates = []
+                        if brand_name:
+                            brand_slug = re.sub(r'[^a-z0-9]', '', brand_name.lower())
+                            if brand_slug != domain_slug:
+                                candidates.append(f"{brand_slug}{country_tld}")
+                        candidates.append(f"{domain_slug}{country_tld}")
+
+                        t0_alt = time.time()
+                        for alt_domain in candidates:
+                            try:
+                                alt_result = scrape_website(f"https://{alt_domain}/", timeout=8, max_retries=1)
+                                if alt_result["success"]:
+                                    alt_social = extract_social_links_from_html(
+                                        alt_result["data"]["html"], f"https://{alt_domain}/"
+                                    )
+                                    alt_data = alt_social.get("data", {}) if alt_social.get("success") else {}
+                                    if alt_data.get("instagram") or alt_data.get("facebook") or alt_data.get("tiktok"):
+                                        social_data = alt_data
+                                        instagram_url = alt_data.get("instagram")
+                                        facebook_url = alt_data.get("facebook")
+                                        if instagram_url:
+                                            result.instagram_url = instagram_url
+                                        ms_alt = int((time.time() - t0_alt) * 1000)
+                                        platforms_found = [k for k, v in alt_data.items() if v]
+                                        _step("social_links_alt", "ok", ms_alt,
+                                              f"found via {alt_domain}: {len(platforms_found)} platforms")
+                                        tools_succeeded += 1
+                                        alt_social_found = True
+                                        break
+                            except Exception:
+                                pass
+                        if not alt_social_found:
+                            ms_alt = int((time.time() - t0_alt) * 1000)
+                            _step("social_links_alt", "warn", ms_alt, "no alternate domain resolved")
+
+                # Fallback 2: search for Instagram via Serper
+                if not instagram_url:
+                    t0_serper = time.time()
+                    try:
+                        brand_name = _extract_brand_from_meta_title(meta_info.get("meta_title"), domain)
+                        if brand_name or domain:
+                            ig_from_serper = search_instagram_via_serper(brand_name or "", domain=domain)
+                            ms_serper = int((time.time() - t0_serper) * 1000)
+                            if ig_from_serper:
+                                instagram_url = ig_from_serper
+                                result.instagram_url = instagram_url
+                                _step("social_links_serper", "ok", ms_serper, f"IG found via Serper: {ig_from_serper}")
+                                if not alt_social_found:
+                                    tools_succeeded += 1
+                            else:
+                                _step("social_links_serper", "warn", ms_serper, f"no IG found for '{brand_name}'")
+                    except Exception as e_serper:
                         ms_serper = int((time.time() - t0_serper) * 1000)
-                        if ig_from_serper:
-                            instagram_url = ig_from_serper
-                            result.instagram_url = instagram_url
-                            _step("social_links_serper", "ok", ms_serper, f"IG found via Serper: {ig_from_serper}")
-                            tools_succeeded += 1
-                        else:
-                            _step("social_links_serper", "warn", ms_serper, f"no IG found for '{brand_name}'")
-                except Exception as e_serper:
-                    ms_serper = int((time.time() - t0_serper) * 1000)
-                    _step("social_links_serper", "fail", ms_serper, str(e_serper))
+                        _step("social_links_serper", "fail", ms_serper, str(e_serper))
         except Exception as e:
             ms = int((time.time() - t0) * 1000)
             _step("social_links", "fail", ms, str(e))
@@ -372,7 +456,7 @@ def run_enrichment(
     fb_page_name = None
     if not facebook_url:
         try:
-            brand_name = meta_info.get("meta_title") or (_extract_brand_name(domain) if domain else None)
+            brand_name = _extract_brand_from_meta_title(meta_info.get("meta_title"), domain)
             if brand_name or domain:
                 fb_serper = search_facebook_via_serper(brand_name or "", domain=domain)
                 if fb_serper:
@@ -433,7 +517,7 @@ def run_enrichment(
 
     # ===== STEP 6c: Facebook & TikTok followers (SearchAPI) =====
     ig_username = instagram_data.get("username") if instagram_data else None
-    brand_name_for_social = ig_username or (_extract_brand_name(domain) if domain else None)
+    brand_name_for_social = ig_username or _extract_brand_from_meta_title(meta_info.get("meta_title"), domain)
 
     # Extract Facebook username from the URL found in HTML (more reliable than brand search)
     fb_search_name = brand_name_for_social
