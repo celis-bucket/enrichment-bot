@@ -465,21 +465,25 @@ def run_enrichment(
         except Exception:
             pass
 
-    # Try SearchAPI Facebook Business Page for more reliable page name
-    if facebook_url and not fb_page_name:
+    # Try SearchAPI Facebook Business Page for more reliable page name + page_id
+    fb_page_id = None
+    if facebook_url:
         try:
             from social.apify_meta_ads import _extract_facebook_username
             fb_username = _extract_facebook_username(facebook_url)
             if fb_username:
                 fb_page_info = searchapi_facebook_page(fb_username)
-                if fb_page_info and fb_page_info.get("page_name"):
-                    fb_page_name = fb_page_info["page_name"]
+                if fb_page_info:
+                    if fb_page_info.get("page_name") and not fb_page_name:
+                        fb_page_name = fb_page_info["page_name"]
+                    if fb_page_info.get("page_id"):
+                        fb_page_id = str(fb_page_info["page_id"])
         except Exception:
             pass
 
     # Build search terms for Meta Ad Library (multi-search strategy):
-    # Try ALL available identifiers and take the highest ads count.
-    # This solves the problem of brands using different accounts for ads.
+    # When page_id is available, it filters to the exact Facebook page (most accurate).
+    # Without page_id, picks the lowest non-zero count to avoid keyword noise.
     ig_full_name = instagram_data.get("full_name") if instagram_data else None
     ig_username = instagram_data.get("username") if instagram_data else None
     search_terms = [fb_page_name, ig_full_name, ig_username]
@@ -488,7 +492,7 @@ def run_enrichment(
     if search_terms:
         tools_attempted += 1
         t0 = time.time()
-        _step("meta_ads", "running", 0, f"multi-search: {search_terms}")
+        _step("meta_ads", "running", 0, f"multi-search: {search_terms}" + (f" (page_id: {fb_page_id})" if fb_page_id else ""))
         try:
             cached = cache_get(domain, "meta_ads") if (domain and not skip_cache) else None
             if cached and cached.get("success"):
@@ -498,7 +502,7 @@ def run_enrichment(
                 # Map geography codes: COL→CO, MEX→MX
                 geo_map = {"COL": "CO", "MEX": "MX"}
                 ad_country = geo_map.get(result.geography, "CO")
-                meta_ads_result = get_meta_ads_multi_search(search_terms, country=ad_country)
+                meta_ads_result = get_meta_ads_multi_search(search_terms, country=ad_country, facebook_page_id=fb_page_id)
                 ms = int((time.time() - t0) * 1000)
                 ma = meta_ads_result.get("data", {}) if meta_ads_result.get("success") else {}
                 if domain and ma:

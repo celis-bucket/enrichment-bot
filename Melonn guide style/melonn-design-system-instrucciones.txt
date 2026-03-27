@@ -1,0 +1,79 @@
+MELONN DESIGN SYSTEM — Instrucciones de uso
+============================================
+
+ARCHIVOS
+--------
+melonn-design-system.css        → Hoja de estilos. Importar en cada proyecto.
+melonn-design-system-reference.html → Referencia visual. Usar con LLMs o para consulta.
+
+
+CÓMO IMPORTAR EN UN PROYECTO
+-----------------------------
+Agregar en el <head> de cada HTML:
+
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Sora:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/melonn-design-system.css">
+
+
+DARK MODE
+---------
+Activar:    document.documentElement.setAttribute('data-theme', 'dark')
+Desactivar: document.documentElement.removeAttribute('data-theme')
+
+El CSS ya incluye todos los tokens dark dentro del bloque [data-theme="dark"].
+No se requiere ningún archivo adicional.
+
+
+REGLAS OBLIGATORIAS
+-------------------
+1. Colores: SOLO var(--melonn-*) y var(--color-*). Nunca hex hardcoded.
+2. Tipografía: var(--font-primary) = Sora. Tamaños: var(--text-xs) hasta var(--text-3xl).
+3. Espaciado: var(--space-1) hasta var(--space-8). Nunca px hardcoded.
+4. Radios: var(--radius-sm/md/lg/xl/2xl/full).
+5. Sombras: var(--shadow-card), var(--shadow-md), var(--shadow-purple).
+6. No usar frameworks CSS externos (Tailwind, Bootstrap, etc.).
+7. No usar otras fuentes distintas a Sora y JetBrains Mono.
+
+
+CLASES DISPONIBLES
+------------------
+Botones:     .btn .btn-primary .btn-outline .btn-secondary .btn-ghost .btn-yellow .btn-teal
+Tamaños btn: .btn-sm .btn-lg
+Cards:       .card
+Badges:      .badge .badge-purple .badge-success .badge-warning .badge-error .badge-teal .badge-neutral
+Formularios: .form-input
+Avatar:      .avatar
+Progreso:    .progress-track + .progress-fill
+Loading:     .spinner .skeleton
+Texto:       .text-gradient
+Layout:      .shell .sidebar .main .topbar .section
+
+
+TOKENS CLAVE — LIGHT MODE
+--------------------------
+--color-bg:           #F4F5F7   fondo general
+--color-surface:      #FFFFFF   cards, sidebar, topbar
+--color-surface-2:    #F8F9FB   inputs, hover states
+--color-border:       #E8EAF0   bordes
+--color-text-primary: #14095B   textos principales
+--melonn-purple:      #4D2AAD   acción primaria
+--melonn-navy:        #14095B   títulos, gradientes
+--melonn-teal:        #00DCD6   acento 1
+--melonn-yellow:      #FFC800   CTA destacado
+
+
+TOKENS CLAVE — DARK MODE
+-------------------------
+--color-bg:           #0A0812   fondo general
+--color-surface:      #100E1E   cards, sidebar, topbar
+--color-surface-2:    #17142A   inputs, hover states
+--color-border:       #2A2545   bordes
+--color-text-primary: #EAE6FF   textos principales
+
+
+USO CON LLMs (Claude Code, Cursor, etc.)
+-----------------------------------------
+1. Adjuntar melonn-design-system-reference.html al inicio del chat.
+2. El tab "Prompt" dentro del archivo contiene un bloque listo para copiar/pegar.
+3. El LLM generará código que importa melonn-design-system.css y respeta todas las variables.

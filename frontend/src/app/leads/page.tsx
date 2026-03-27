@@ -4,8 +4,8 @@ import { useState, useEffect, useCallback } from 'react';
 import { Header } from '@/components/Header';
 import { ScoreBar } from '@/components/ScoreBar';
 import { PotentialTierBadge } from '@/components/PotentialTierBadge';
-import { getLeads, getCompany, analyzeUrlV2, syncLeads, submitFeedback } from '@/lib/api';
-import type { LeadListItem, EnrichmentV2Results, PipelineStep } from '@/lib/types';
+import { getLeads, getCompany, getHubSpotDetail, analyzeUrlV2, syncLeads, submitFeedback } from '@/lib/api';
+import type { LeadListItem, EnrichmentV2Results, PipelineStep, ApolloContact, HubSpotContact } from '@/lib/types';
 
 function fmt(n: number | null | undefined): string {
   if (n == null) return '--';
@@ -80,17 +80,81 @@ function StageBadge({ stage }: { stage?: string | null }) {
   return <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${c}`}>{stage}</span>;
 }
 
+// --- Unified Contact type ---
+interface UnifiedContact {
+  name: string;
+  title?: string | null;
+  email?: string | null;
+  phone?: string | null;
+  linkedin_url?: string | null;
+  source: 'apollo' | 'hubspot';
+}
+
+function SourceBadge({ source }: { source: 'apollo' | 'hubspot' }) {
+  const styles = source === 'apollo'
+    ? 'bg-orange-50 text-orange-600'
+    : 'bg-blue-50 text-blue-600';
+  return <span className={`px-1.5 py-0.5 rounded text-[10px] font-medium ${styles}`}>{source === 'apollo' ? 'Apollo' : 'HubSpot'}</span>;
+}
+
+function ContactCard({ contact }: { contact: UnifiedContact }) {
+  return (
+    <div className="py-2 border-b border-gray-50 last:border-0">
+      <div className="flex items-center gap-2 mb-0.5">
+        <span className="text-xs font-medium text-melonn-navy">{contact.name || 'Sin nombre'}</span>
+        <SourceBadge source={contact.source} />
+      </div>
+      {contact.title && <p className="text-[11px] text-gray-500">{contact.title}</p>}
+      <div className="flex flex-wrap gap-x-3 gap-y-0.5 mt-1">
+        {contact.email && (
+          <a href={`mailto:${contact.email}`} className="text-[11px] text-melonn-purple hover:underline">{contact.email}</a>
+        )}
+        {contact.phone && (
+          <span className="text-[11px] text-gray-500">{contact.phone}</span>
+        )}
+        {contact.linkedin_url && (
+          <a href={contact.linkedin_url} target="_blank" rel="noreferrer" className="text-[11px] text-melonn-purple hover:underline">LinkedIn</a>
+        )}
+      </div>
+    </div>
+  );
+}
+
 // --- Detail Drawer ---
 function DetailDrawer({ domain, onClose, onEnrich }: { domain: string; onClose: () => void; onEnrich: (domain: string) => void }) {
   const [data, setData] = useState<EnrichmentV2Results | null>(null);
   const [loading, setLoading] = useState(true);
+  const [hsContacts, setHsContacts] = useState<HubSpotContact[]>([]);
 
   useEffect(() => {
     getCompany(domain)
-      .then(setData)
+      .then((result) => {
+        setData(result);
+        // Fetch HubSpot contacts if company_id exists
+        if (result.hubspot_company_id) {
+          getHubSpotDetail(result.hubspot_company_id)
+            .then((hs) => setHsContacts(hs.contacts || []))
+            .catch(() => {});
+        }
+      })
       .catch(console.error)
       .finally(() => setLoading(false));
   }, [domain]);
+
+  // Merge contacts from both sources, deduplicate by email
+  const allContacts: UnifiedContact[] = [];
+  const seenEmails = new Set<string>();
+
+  if (data?.contacts) {
+    for (const c of data.contacts as ApolloContact[]) {
+      if (c.email) seenEmails.add(c.email.toLowerCase());
+      allContacts.push({ name: c.name, title: c.title, email: c.email, phone: c.phone, linkedin_url: c.linkedin_url, source: 'apollo' });
+    }
+  }
+  for (const c of hsContacts) {
+    if (c.email && seenEmails.has(c.email.toLowerCase())) continue;
+    allContacts.push({ name: c.name || '', title: c.title, email: c.email, source: 'hubspot' });
+  }
 
   return (
     <>
@@ -126,6 +190,7 @@ function DetailDrawer({ domain, onClose, onEnrich }: { domain: string; onClose: 
                 <Row label="Lite Score" value={<ScoreBar score={(data as unknown as LeadListItem).lite_triage_score} />} />
                 <Row label="Plataforma" value={data.platform} />
                 <Row label="Pais" value={data.geography} />
+                <Row label="Categoria" value={data.category} />
                 <Row label="Enrichment" value={(data as unknown as LeadListItem).enrichment_type || 'lite'} />
               </Section>
 
@@ -145,7 +210,46 @@ function DetailDrawer({ domain, onClose, onEnrich }: { domain: string; onClose: 
                 <Row label="Instagram" value={data.instagram_url
                   ? <a href={data.instagram_url} target="_blank" rel="noreferrer" className="text-melonn-purple underline">Ver perfil</a>
                   : undefined} />
+                <Row label="FB Seguidores" value={data.fb_followers ? fmt(data.fb_followers) : undefined} />
+                <Row label="TikTok Seguidores" value={data.tiktok_followers ? fmt(data.tiktok_followers) : undefined} />
               </Section>
+
+              {(data.meta_active_ads_count != null || data.tiktok_active_ads_count != null) && (
+                <Section title="Publicidad">
+                  <Row label="Meta Ads activos" value={data.meta_active_ads_count != null ? String(data.meta_active_ads_count) : undefined} />
+                  <Row label="Meta Ad Library" value={data.meta_ad_library_url
+                    ? <a href={data.meta_ad_library_url} target="_blank" rel="noreferrer" className="text-melonn-purple underline">Ver</a>
+                    : undefined} />
+                  <Row label="TikTok Ads activos" value={data.tiktok_active_ads_count != null ? String(data.tiktok_active_ads_count) : undefined} />
+                  <Row label="TikTok Ad Library" value={data.tiktok_ads_library_url
+                    ? <a href={data.tiktok_ads_library_url} target="_blank" rel="noreferrer" className="text-melonn-purple underline">Ver</a>
+                    : undefined} />
+                </Section>
+              )}
+
+              {data.product_count != null && (
+                <Section title="Catalogo">
+                  <Row label="Productos" value={fmt(data.product_count)} />
+                  <Row label="Precio promedio" value={data.avg_price != null ? `${data.currency || '$'} ${fmt(data.avg_price)}` : undefined} />
+                  <Row label="Rango" value={data.price_range_min != null && data.price_range_max != null
+                    ? `${data.currency || '$'} ${fmt(data.price_range_min)} - ${fmt(data.price_range_max)}`
+                    : undefined} />
+                </Section>
+              )}
+
+              {data.estimated_monthly_visits != null && (
+                <Section title="Trafico Web">
+                  <Row label="Visitas mensuales" value={fmt(data.estimated_monthly_visits)} />
+                  <Row label="Confianza" value={data.traffic_confidence != null ? `${(data.traffic_confidence * 100).toFixed(0)}%` : undefined} />
+                </Section>
+              )}
+
+              {(data.brand_demand_score != null || data.site_serp_coverage_score != null) && (
+                <Section title="Demanda Google">
+                  <Row label="Demanda de marca" value={data.brand_demand_score} />
+                  <Row label="Cobertura SERP" value={data.site_serp_coverage_score} />
+                </Section>
+              )}
 
               {data.prediction && (
                 <Section title="Estimacion de pedidos">
@@ -154,6 +258,23 @@ function DetailDrawer({ domain, onClose, onEnrich }: { domain: string; onClose: 
                   <Row label="Optimista (p90)" value={fmt(data.prediction.predicted_orders_p90)} />
                 </Section>
               )}
+
+              {/* Contacts Section */}
+              <Section title={`Contactos (${allContacts.length})`}>
+                {allContacts.length === 0 ? (
+                  <p className="text-xs text-gray-400 py-2">Sin contactos. Ejecuta Full Enrich para obtener contactos via Apollo.</p>
+                ) : (
+                  allContacts.map((c, i) => <ContactCard key={`${c.source}-${c.email || i}`} contact={c} />)
+                )}
+                {data.company_linkedin && (
+                  <div className="pt-2">
+                    <Row label="LinkedIn empresa" value={
+                      <a href={data.company_linkedin} target="_blank" rel="noreferrer" className="text-melonn-purple underline">Ver</a>
+                    } />
+                  </div>
+                )}
+                <Row label="Empleados" value={data.number_employes ? fmt(data.number_employes) : undefined} />
+              </Section>
 
               <Section title="HubSpot CRM">
                 <Row label="Estado" value={data.hubspot_company_id ? 'En CRM' : 'No encontrada'} />

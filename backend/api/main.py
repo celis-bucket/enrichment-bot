@@ -33,6 +33,8 @@ from export.supabase_writer import (
     ping as supabase_ping,
     insert_feedback,
     get_feedback,
+    get_all_unresolved_feedback,
+    resolve_feedback,
 )
 from orchestrator.run_enrichment import run_enrichment
 
@@ -49,6 +51,8 @@ from api.models.schemas import (
     FeedbackRequest,
     FeedbackItem,
     FeedbackListResponse,
+    FeedbackResolveRequest,
+    UnresolvedFeedbackResponse,
     HubSpotDetailResponse,
 )
 from hubspot.hubspot_lookup import get_company_detail
@@ -821,6 +825,33 @@ async def list_feedback(domain: str, api_key: str = Depends(verify_api_key)):
         rows = get_feedback(client, domain)
         items = [FeedbackItem(**r) for r in rows]
         return FeedbackListResponse(domain=domain, feedback=items, total=len(items))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/v2/feedback/unresolved", response_model=UnresolvedFeedbackResponse, tags=["Feedback"])
+async def list_unresolved_feedback(api_key: str = Depends(verify_api_key)):
+    """Get all unresolved feedback across all domains."""
+    try:
+        client = supabase_client or get_supabase_client()
+        rows = get_all_unresolved_feedback(client)
+        items = [FeedbackItem(**r) for r in rows]
+        return UnresolvedFeedbackResponse(feedback=items, total=len(items))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.patch("/api/v2/feedback/{feedback_id}/resolve", tags=["Feedback"])
+async def resolve_feedback_item(feedback_id: str, request: FeedbackResolveRequest, api_key: str = Depends(verify_api_key)):
+    """Mark a feedback item as resolved."""
+    try:
+        client = supabase_client or get_supabase_client()
+        result = resolve_feedback(client, feedback_id, request.resolved_note)
+        if not result:
+            raise HTTPException(status_code=404, detail="Feedback not found")
+        return {"resolved": True, "id": feedback_id}
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 

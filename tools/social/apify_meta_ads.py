@@ -64,9 +64,16 @@ def _build_ad_library_url(search_term: str, country: str = DEFAULT_COUNTRY) -> s
 def _searchapi_meta_ads(
     search_term: str,
     country: str = DEFAULT_COUNTRY,
+    page_id: Optional[str] = None,
 ) -> Optional[Dict[str, Any]]:
     """
     Get active ads count via SearchAPI.io Meta Ad Library engine.
+
+    Args:
+        search_term: Brand name or keyword to search
+        country: Two-letter country code
+        page_id: Facebook page ID for precise filtering (avoids false matches)
+
     Returns result dict on success, None on failure.
     """
     api_key = os.getenv("SEARCHAPI_API_KEY")
@@ -74,16 +81,20 @@ def _searchapi_meta_ads(
         return None
 
     try:
+        params = {
+            "engine": "meta_ad_library",
+            "q": search_term,
+            "country": country,
+            "active_status": "active",
+            "ad_type": "all",
+            "api_key": api_key,
+        }
+        if page_id:
+            params["page_id"] = page_id
+
         resp = requests.get(
             "https://www.searchapi.io/api/v1/search",
-            params={
-                "engine": "meta_ad_library",
-                "q": search_term,
-                "country": country,
-                "active_status": "active",
-                "ad_type": "all",
-                "api_key": api_key,
-            },
+            params=params,
             timeout=15,
         )
         if resp.status_code != 200:
@@ -106,6 +117,7 @@ def _searchapi_meta_ads(
                 "ad_library_url": ad_library_url,
                 "search_term": search_term,
                 "country": country,
+                "page_id": page_id,
                 "scraped_at": datetime.now(tz=None).isoformat(),
             },
             "error": None,
@@ -215,38 +227,112 @@ def get_meta_ads_count(
         }
 
 
+def _extract_page_id_from_ads(search_term: str, country: str) -> Optional[str]:
+    """
+    Search Meta Ad Library by keyword and extract the page_id of the matching page.
+
+    The page_id from individual ad objects is the correct Meta Ad Library page_id
+    (different from the profile ID returned by searchapi_facebook_page).
+
+    Matching priority: exact name match > most frequent page in results.
+    """
+    api_key = os.getenv("SEARCHAPI_API_KEY")
+    if not api_key:
+        return None
+
+    try:
+        resp = requests.get(
+            "https://www.searchapi.io/api/v1/search",
+            params={
+                "engine": "meta_ad_library",
+                "q": search_term,
+                "country": country,
+                "active_status": "active",
+                "ad_type": "all",
+                "api_key": api_key,
+            },
+            timeout=15,
+        )
+        if resp.status_code != 200:
+            return None
+
+        data = resp.json()
+        ads = data.get("ads", [])
+        if not ads:
+            return None
+
+        term_lower = search_term.lower().strip()
+
+        # Pass 1: exact page_name match
+        for ad in ads:
+            page_name = (ad.get("page_name") or "").lower().strip()
+            ad_page_id = ad.get("page_id") or (ad.get("snapshot") or {}).get("page_id")
+            if ad_page_id and page_name == term_lower:
+                return str(ad_page_id)
+
+        # No exact match found — don't guess, return None to fall through
+        # to keyword-only search which picks the lowest count
+        return None
+    except Exception:
+        return None
+
+
 def get_meta_ads_multi_search(
     search_terms: List[str],
     country: str = DEFAULT_COUNTRY,
+    facebook_page_id: Optional[str] = None,
 ) -> Dict[str, Any]:
     """
     Search Meta Ad Library with multiple terms, return the best result.
 
-    Useful when a brand may advertise under different names (FB page vs IG account).
-    Tries each term and returns the one with the highest active_ads_count.
+    Strategy:
+    1. If facebook_page_id is provided, search with page_id filter (most accurate)
+    2. Otherwise, do a keyword search and extract the page_id from matching ads,
+       then re-search with that page_id for a precise count
+    3. Final fallback: pick the lowest non-zero count from keyword searches
 
     Args:
         search_terms: List of search terms to try (e.g., [fb_page_name, ig_username, brand_name])
         country: Two-letter country code
+        facebook_page_id: Optional Facebook page ID for precise filtering
 
     Returns:
         Best result dict (same format as get_meta_ads_count)
     """
-    best_result = None
-    best_count = -1
+    # If we have a page_id, use it directly with the first search term
+    if facebook_page_id:
+        for term in search_terms:
+            if not term:
+                continue
+            result = _searchapi_meta_ads(term.strip(), country, page_id=facebook_page_id)
+            if result and result.get("success"):
+                return result
 
+    # No page_id provided — try to discover it from ad results
+    for term in search_terms:
+        if not term:
+            continue
+        discovered_page_id = _extract_page_id_from_ads(term.strip(), country)
+        if discovered_page_id:
+            # Re-search with the discovered page_id for accurate count
+            result = _searchapi_meta_ads(term.strip(), country, page_id=discovered_page_id)
+            if result and result.get("success"):
+                return result
+
+    # Final fallback: keyword search, pick lowest non-zero count
+    results = []
     for term in search_terms:
         if not term:
             continue
         result = _searchapi_meta_ads(term.strip(), country)
         if result and result.get("success"):
             count = result["data"].get("active_ads_count", 0)
-            if count > best_count:
-                best_count = count
-                best_result = result
+            if count > 0:
+                results.append((count, result))
 
-    if best_result:
-        return best_result
+    if results:
+        results.sort(key=lambda x: x[0])
+        return results[0][1]
 
     return {
         "success": False,

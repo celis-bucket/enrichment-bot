@@ -418,6 +418,113 @@ def scrape_shopify_api(base_url: str) -> Dict[str, Any]:
         return {'success': False, 'data': {}, 'error': f'Shopify API error: {str(e)}'}
 
 
+def scrape_woocommerce_api(base_url: str) -> Dict[str, Any]:
+    """
+    Scrape products from WooCommerce's public Store API.
+
+    Uses /wp-json/wc/store/v1/products (no auth required).
+
+    Args:
+        base_url: Base URL of the WooCommerce store
+
+    Returns:
+        Dict with success, data, error
+    """
+    import requests
+
+    parsed = urlparse(base_url)
+    store_base = f"{parsed.scheme}://{parsed.netloc}"
+    api_url = f"{store_base}/wp-json/wc/store/v1/products"
+
+    try:
+        headers = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+            'Accept': 'application/json',
+        }
+
+        resp = requests.get(
+            api_url,
+            params={'per_page': 100},
+            headers=headers,
+            timeout=20,
+        )
+
+        if resp.status_code != 200:
+            return {'success': False, 'data': {}, 'error': f'WooCommerce API returned {resp.status_code}'}
+
+        products = resp.json()
+        if not isinstance(products, list) or not products:
+            return {'success': False, 'data': {}, 'error': 'No products in WooCommerce API response'}
+
+        # Get total from pagination header
+        total_products = int(resp.headers.get('X-WP-Total', resp.headers.get('x-wp-total', len(products))))
+
+        # Extract prices
+        prices = []
+        sample_products = []
+        currency = None
+
+        for product in products:
+            title = product.get('name', 'Unknown')
+            price_info = product.get('prices', {})
+            price_str = price_info.get('price', '0')
+
+            if not currency:
+                currency = price_info.get('currency_code', 'USD')
+
+            try:
+                # WooCommerce Store API returns prices in minor units (cents)
+                raw_price = int(price_str)
+                decimals = int(price_info.get('currency_minor_unit', 2))
+                price = raw_price / (10 ** decimals)
+                if price > 0:
+                    prices.append(price)
+                    sample_products.append({'name': title, 'price': price})
+                else:
+                    sample_products.append({'name': title})
+            except (ValueError, TypeError):
+                sample_products.append({'name': title})
+
+        if not prices:
+            return {
+                'success': True,
+                'data': {
+                    'product_count': total_products,
+                    'avg_price': None,
+                    'price_range': {'min': None, 'max': None},
+                    'currency': currency or 'USD',
+                    'sample_products': sample_products[:10],
+                    'products_on_page': len(products),
+                    'source': 'woocommerce_api',
+                },
+                'error': None,
+            }
+
+        avg_price = statistics.mean(prices)
+
+        return {
+            'success': True,
+            'data': {
+                'product_count': total_products,
+                'avg_price': round(avg_price, 2),
+                'price_range': {
+                    'min': round(min(prices), 2),
+                    'max': round(max(prices), 2),
+                },
+                'currency': currency or 'USD',
+                'sample_products': sample_products[:10],
+                'products_on_page': len(products),
+                'source': 'woocommerce_api',
+            },
+            'error': None,
+        }
+
+    except requests.exceptions.RequestException as e:
+        return {'success': False, 'data': {}, 'error': f'WooCommerce API request failed: {str(e)}'}
+    except Exception as e:
+        return {'success': False, 'data': {}, 'error': f'WooCommerce API error: {str(e)}'}
+
+
 def scrape_product_catalog(url: str, platform: Optional[str] = None) -> Dict[str, Any]:
     """
     Scrape product catalog to get size, pricing, and statistics.
@@ -433,16 +540,26 @@ def scrape_product_catalog(url: str, platform: Optional[str] = None) -> Dict[str
             - error: str or None
     """
     try:
-        # If platform is known VTEX, try VTEX API first
+        # If platform is known, try its API first
         if platform and platform.upper() == 'VTEX':
             vtex_result = scrape_vtex_api(url)
             if vtex_result['success']:
                 return vtex_result
 
+        if platform and platform.upper() == 'WOOCOMMERCE':
+            woo_result = scrape_woocommerce_api(url)
+            if woo_result['success']:
+                return woo_result
+
         # Try Shopify API (works even with anti-bot protection)
         shopify_result = scrape_shopify_api(url)
         if shopify_result['success']:
             return shopify_result
+
+        # Try WooCommerce Store API
+        woo_result = scrape_woocommerce_api(url)
+        if woo_result['success']:
+            return woo_result
 
         # If platform unknown, also attempt VTEX opportunistically before HTML fallback
         if not (platform and platform.upper() == 'VTEX'):

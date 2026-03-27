@@ -2,6 +2,7 @@
 
 import { useState, useRef } from 'react';
 import { Header } from '@/components/Header';
+import { FeedbackPanel } from '@/components/FeedbackPanel';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
 const API_KEY = process.env.NEXT_PUBLIC_API_KEY || '';
@@ -55,6 +56,7 @@ export default function RetailPage() {
   const [result, setResult] = useState<RetailResult | null>(null);
   const [running, setRunning] = useState(false);
   const [error, setError] = useState('');
+  const [analyzedDomain, setAnalyzedDomain] = useState('');
   const abortRef = useRef<AbortController | null>(null);
 
   async function handleSubmit(e: React.FormEvent) {
@@ -69,6 +71,7 @@ export default function RetailPage() {
     setResult(null);
     setError('');
     setRunning(true);
+    setAnalyzedDomain(cleanDomain);
 
     const controller = new AbortController();
     abortRef.current = controller;
@@ -256,6 +259,9 @@ export default function RetailPage() {
                 </div>
               </div>
             </div>
+
+            {/* Feedback */}
+            <FeedbackPanel domain={analyzedDomain} section="retail" />
           </div>
         )}
       </main>

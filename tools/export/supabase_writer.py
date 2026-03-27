@@ -174,3 +174,39 @@ def get_feedback(client: SupabaseClient, domain: str) -> list[dict]:
         eq={"domain": domain.lower().strip()},
         order="created_at.desc",
     )
+
+
+def get_all_unresolved_feedback(client: SupabaseClient) -> list[dict]:
+    """
+    Get all unresolved feedback across all domains, newest first.
+
+    Returns:
+        List of feedback dicts where resolved_at IS NULL
+    """
+    return client.select(
+        FEEDBACK_TABLE,
+        is_null={"resolved_at": True},
+        order="created_at.desc",
+    )
+
+
+def resolve_feedback(client: SupabaseClient, feedback_id: str, resolved_note: str = None) -> dict:
+    """
+    Mark a feedback item as resolved.
+
+    Args:
+        client: SupabaseClient instance
+        feedback_id: UUID of the feedback row
+        resolved_note: Optional note explaining the resolution
+
+    Returns:
+        The updated row dict from Supabase
+    """
+    from datetime import datetime, timezone
+
+    data = {"resolved_at": datetime.now(timezone.utc).isoformat()}
+    if resolved_note:
+        data["resolved_note"] = resolved_note
+
+    result = client.update(FEEDBACK_TABLE, data, eq={"id": feedback_id})
+    return result[0] if result else {}

@@ -154,6 +154,33 @@ class SupabaseClient:
         resp.raise_for_status()
         return resp.json()
 
+    def update(self, table: str, data: dict, eq: dict = None) -> list[dict]:
+        """
+        UPDATE rows in a table matching filters.
+
+        Args:
+            table: Table name
+            data: Columns to update {column: value}
+            eq: Equality filters to match rows {column: value}
+
+        Returns:
+            List of updated rows
+        """
+        params = {}
+        if eq:
+            for col, val in eq.items():
+                params[col] = f"eq.{val}"
+
+        resp = requests.patch(
+            f"{self.rest_url}/{table}",
+            headers=self.headers,
+            json=data,
+            params=params,
+            timeout=30,
+        )
+        resp.raise_for_status()
+        return resp.json()
+
     def rpc(self, function_name: str, params: dict = None) -> Any:
         """Call a Supabase RPC function."""
         resp = requests.post(
