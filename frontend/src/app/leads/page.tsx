@@ -12,6 +12,28 @@ function fmt(n: number | null | undefined): string {
   return n.toLocaleString('es-CO');
 }
 
+function isOlderThanMonths(dateStr: string | null | undefined, months: number): boolean {
+  if (!dateStr) return false;
+  const d = new Date(dateStr);
+  const cutoff = new Date();
+  cutoff.setMonth(cutoff.getMonth() - months);
+  return d < cutoff;
+}
+
+function isOlderThanDays(dateStr: string | null | undefined, days: number): boolean {
+  if (!dateStr) return true; // no date = alert
+  const d = new Date(dateStr);
+  const cutoff = new Date();
+  cutoff.setDate(cutoff.getDate() - days);
+  return d < cutoff;
+}
+
+function AlertIcon({ color, title }: { color: string; title: string }) {
+  return (
+    <span title={title} className={`inline-block ml-1 w-2 h-2 rounded-full ${color}`} />
+  );
+}
+
 function Row({ label, value }: { label: string; value: React.ReactNode }) {
   if (value == null || value === '' || value === '--') return null;
   return (
@@ -242,12 +264,14 @@ function FilterSelect({
 }
 
 // --- Summary Cards ---
-function SummaryCards({ total, worthFull, fullyEnriched }: { total: number; worthFull: number; fullyEnriched: number }) {
+function SummaryCards({ total, worthFull, fullyEnriched, leads }: { total: number; worthFull: number; fullyEnriched: number; leads: LeadListItem[] }) {
+  const oldLeads = leads.filter(l => isOlderThanMonths(l.hs_lead_created_at, 6)).length;
+  const noActivity = leads.filter(l => isOlderThanDays(l.hs_last_activity_date, 30)).length;
   const cards = [
     { label: 'Total Leads', count: total, color: 'border-melonn-purple text-melonn-purple bg-melonn-purple-50' },
     { label: 'Worth Enrichment', count: worthFull, color: 'border-melonn-green text-melonn-green bg-melonn-green-50' },
     { label: 'Fully Enriched', count: fullyEnriched, color: 'border-blue-400 text-blue-600 bg-blue-50' },
-    { label: 'Pending', count: total - fullyEnriched, color: 'border-melonn-orange text-melonn-orange bg-melonn-orange-50' },
+    { label: `Alertas (>6m: ${oldLeads}, inact: ${noActivity})`, count: oldLeads + noActivity, color: 'border-red-400 text-red-600 bg-red-50' },
   ];
 
   return (
@@ -347,7 +371,7 @@ export default function LeadsPage() {
         </div>
 
         {/* Summary Cards */}
-        <SummaryCards total={total} worthFull={worthFullCount} fullyEnriched={fullyEnrichedCount} />
+        <SummaryCards total={total} worthFull={worthFullCount} fullyEnriched={fullyEnrichedCount} leads={leads} />
 
         {/* Filters */}
         <div className="flex flex-wrap items-center gap-3 mb-4">
@@ -396,6 +420,7 @@ export default function LeadsPage() {
                   <th className="px-2 py-2.5 font-semibold whitespace-nowrap">Responsable</th>
                   <th className="px-2 py-2.5 font-semibold whitespace-nowrap">Creado</th>
                   <th className="px-2 py-2.5 font-semibold whitespace-nowrap">Lead Stage</th>
+                  <th className="px-2 py-2.5 font-semibold whitespace-nowrap">Ult. Actividad</th>
                   <th className="px-2 py-2.5 font-semibold whitespace-nowrap">Ult. Cierre Perdido</th>
                   <th className="px-2 py-2.5 font-semibold whitespace-nowrap">Enrich</th>
                   <th className="px-2 py-2.5 font-semibold whitespace-nowrap text-right">P90 Orders</th>
@@ -405,11 +430,11 @@ export default function LeadsPage() {
               <tbody className="divide-y divide-gray-50">
                 {isLoading ? (
                   <tr>
-                    <td colSpan={10} className="px-4 py-12 text-center text-gray-400">Cargando...</td>
+                    <td colSpan={11} className="px-4 py-12 text-center text-gray-400">Cargando...</td>
                   </tr>
                 ) : leads.length === 0 ? (
                   <tr>
-                    <td colSpan={10} className="px-4 py-12 text-center text-gray-400">
+                    <td colSpan={11} className="px-4 py-12 text-center text-gray-400">
                       {search ? 'Ningun lead coincide con los filtros' : 'No hay leads. Haz click en "Sync HubSpot" para importar.'}
                     </td>
                   </tr>
@@ -449,8 +474,20 @@ export default function LeadsPage() {
                       </td>
                       <td className="px-2 py-2.5 text-gray-500 whitespace-nowrap text-xs">
                         {l.hs_lead_created_at ? l.hs_lead_created_at.slice(0, 10) : '--'}
+                        {isOlderThanMonths(l.hs_lead_created_at, 6) && (
+                          <AlertIcon color="bg-red-500" title="Lead creado hace mas de 6 meses" />
+                        )}
                       </td>
                       <td className="px-2 py-2.5 whitespace-nowrap"><StageBadge stage={l.hs_lead_stage} /></td>
+                      <td className="px-2 py-2.5 text-gray-500 whitespace-nowrap text-xs">
+                        {l.hs_last_activity_date ? l.hs_last_activity_date.slice(0, 10) : '--'}
+                        {isOlderThanDays(l.hs_last_activity_date, 30) && (
+                          <AlertIcon color="bg-orange-400" title="Sin actividad hace mas de 30 dias" />
+                        )}
+                        {(l.hs_open_tasks_count == null || l.hs_open_tasks_count === 0) && (
+                          <AlertIcon color="bg-yellow-400" title="Sin tareas pendientes" />
+                        )}
+                      </td>
                       <td className="px-2 py-2.5 text-gray-500 whitespace-nowrap text-xs">
                         {l.hs_last_lost_deal_date || '--'}
                       </td>

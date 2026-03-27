@@ -575,6 +575,7 @@ async def list_leads(
             "ig_followers,ig_size_score,lite_triage_score,worth_full_enrichment,"
             "enrichment_type,hubspot_company_id,hubspot_deal_stage,hubspot_deal_count,"
             "hs_lead_stage,hs_lead_label,hs_lead_owner,hs_last_lost_deal_date,hs_lead_created_at,"
+            "hs_last_activity_date,hs_activity_count,hs_open_tasks_count,"
             "overall_potential_score,potential_tier,predicted_orders_p90,"
             "tool_coverage_pct,updated_at"
         )
@@ -595,9 +596,10 @@ async def list_leads(
             wfe = worth_full_enrichment.lower() == "true"
             rows = [r for r in rows if r.get("worth_full_enrichment") == wfe]
 
-        # Exclude companies with Cierre ganado (already won customers)
+        # Exclude companies with Cierre ganado or active deals (already being worked)
+        _exclude_stages = {"cierre ganado", "consideracion", "parametrización", "onboarding"}
         rows = [r for r in rows if not (
-            r.get("hubspot_deal_stage") and "ganado" in (r["hubspot_deal_stage"]).lower()
+            r.get("hubspot_deal_stage") and r["hubspot_deal_stage"].lower() in _exclude_stages
         )]
 
         total = len(rows)
