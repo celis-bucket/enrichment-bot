@@ -101,6 +101,22 @@ SHEET_HEADERS = [
     "hubspot_contact_exists",
     "hubspot_lifecycle_label",
     "hubspot_last_contacted",
+    # RETAIL CHANNELS
+    "has_distributors",
+    "has_own_stores",
+    "own_store_count_col",
+    "own_store_count_mex",
+    "has_multibrand_stores",
+    "multibrand_store_names",
+    "on_mercadolibre",
+    "on_amazon",
+    "on_rappi",
+    "on_walmart",
+    "on_liverpool",
+    "on_coppel",
+    "marketplace_names",
+    "retail_confidence",
+    "retail_enriched_at",
     # POTENTIAL SCORING
     "ecommerce_size_score",
     "retail_size_score",
@@ -210,6 +226,23 @@ class EnrichmentResult:
     hubspot_lifecycle_label: Optional[str] = None    # Cliente, Lead Ventas, etc.
     hubspot_last_contacted: Optional[str] = None     # ISO date of last contact
 
+    # RETAIL CHANNELS
+    has_distributors: Optional[bool] = None
+    has_own_stores: Optional[bool] = None
+    own_store_count_col: Optional[int] = None
+    own_store_count_mex: Optional[int] = None
+    has_multibrand_stores: Optional[bool] = None
+    multibrand_store_names: Optional[List[str]] = field(default=None)
+    on_mercadolibre: Optional[bool] = None
+    on_amazon: Optional[bool] = None
+    on_rappi: Optional[bool] = None
+    on_walmart: Optional[bool] = None
+    on_liverpool: Optional[bool] = None
+    on_coppel: Optional[bool] = None
+    marketplace_names: Optional[List[str]] = field(default=None)
+    retail_confidence: Optional[float] = None
+    retail_enriched_at: Optional[str] = None
+
     # POTENTIAL SCORING
     ecommerce_size_score: Optional[int] = None       # 0-100
     retail_size_score: Optional[int] = None           # 0-100
@@ -261,6 +294,11 @@ class EnrichmentResult:
                 d["workflow_execution_log"] = json.loads(wlog)
             except (json.JSONDecodeError, TypeError):
                 d["workflow_execution_log"] = []
+        # Serialize list fields to JSON strings for JSONB columns
+        for list_field in ("multibrand_store_names", "marketplace_names"):
+            val = d.get(list_field)
+            if isinstance(val, list):
+                d[list_field] = json.dumps(val)
         # Merge prediction fields if provided
         if prediction:
             d["predicted_orders_p10"] = prediction.get("predicted_orders_p10")

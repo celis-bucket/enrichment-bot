@@ -143,6 +143,12 @@ def run_enrichment(
     tools_attempted = 0
     tools_succeeded = 0
 
+    # If geography was explicitly provided (from API), lock it in
+    COUNTRY_CODES = {"COL", "MEX"}
+    if country and country.upper() in COUNTRY_CODES:
+        result.geography = country.upper()
+        result.geography_confidence = 1.0
+
     # Intermediate data shared between steps
     html = None
     headers = {}
@@ -275,7 +281,12 @@ def run_enrichment(
             _step("platform", "fail", ms, str(e))
 
     # ===== STEP 4: Detect geography =====
-    if html:
+    # If geography was locked by user input, skip auto-detection (just validate)
+    if result.geography and result.geography_confidence == 1.0:
+        _step("geography", "ok", 0, f"{result.geography} (user-provided)")
+        tools_attempted += 1
+        tools_succeeded += 1
+    elif html:
         tools_attempted += 1
         t0 = time.time()
         try:
@@ -569,8 +580,8 @@ def run_enrichment(
             ms = int((time.time() - t0) * 1000)
             _step("facebook", "fail", ms, str(e))
 
-    # TikTok disabled for Colombia (not active yet)
-    _skip_tiktok = True
+    # TikTok enabled only for Mexico (not active in Colombia yet)
+    _skip_tiktok = (geography != "MEX")
     if tiktok_username and not _skip_tiktok:
         # TikTok followers
         tools_attempted += 1
@@ -834,7 +845,8 @@ def run_enrichment(
             _step("apollo", "fail", ms, str(e))
 
     # ===== STEP 12b: Geography reconciliation =====
-    if result.geography in (None, "UNKNOWN"):
+    # Skip if geography was user-provided (confidence 1.0)
+    if result.geography in (None, "UNKNOWN") and result.geography_confidence != 1.0:
         t0 = time.time()
         geo_resolved = None
         geo_source = ""
@@ -918,7 +930,51 @@ def run_enrichment(
             ms = int((time.time() - t0) * 1000)
             _step("hubspot", "fail", ms, str(e))
 
-    # ===== STEP 14: Potential Scoring =====
+    # ===== STEP 14: Retail Channel Enrichment =====
+    if domain:
+        t0 = time.time()
+        try:
+            from retail.run_retail_enrichment import run_retail_enrichment
+            from datetime import datetime, timezone
+
+            # Gather inputs already available from earlier steps
+            retail_ig_bio = instagram_data.get("biography") if instagram_data else None
+            retail_ig_username = instagram_data.get("username") if instagram_data else None
+
+            retail_result = run_retail_enrichment(
+                domain=domain,
+                brand_name=result.company_name or domain.split(".")[0],
+                html=html,
+                geography=result.geography,
+                category=result.category,
+                ig_bio=retail_ig_bio,
+                ig_username=retail_ig_username,
+                skip_cache=skip_cache,
+                on_step=on_step,
+            )
+
+            if retail_result.get("success"):
+                rd = retail_result["data"]
+                result.has_distributors = rd.get("has_distributors")
+                result.has_own_stores = rd.get("has_own_stores")
+                result.own_store_count_col = rd.get("own_store_count_col")
+                result.own_store_count_mex = rd.get("own_store_count_mex")
+                result.has_multibrand_stores = rd.get("has_multibrand_stores")
+                result.multibrand_store_names = rd.get("multibrand_store_names", [])
+                result.on_mercadolibre = rd.get("on_mercadolibre")
+                result.on_amazon = rd.get("on_amazon")
+                result.on_rappi = rd.get("on_rappi")
+                result.on_walmart = rd.get("on_walmart")
+                result.on_liverpool = rd.get("on_liverpool")
+                result.on_coppel = rd.get("on_coppel")
+                result.marketplace_names = rd.get("marketplace_names", [])
+                result.retail_confidence = rd.get("retail_confidence")
+                result.retail_enriched_at = datetime.now(timezone.utc).isoformat()
+        except Exception as e:
+            ms = int((time.time() - t0) * 1000)
+            _step("retail_enrichment", "fail", ms, str(e))
+
+    # ===== STEP 15: Potential Scoring =====
     t0 = time.time()
     try:
         from scoring.potential_scoring import score_company

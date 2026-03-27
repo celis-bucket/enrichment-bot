@@ -28,7 +28,7 @@ SCORE_COLUMNS = (
     "predicted_orders_p90,brand_demand_score,"
     "has_multibrand_stores,multibrand_store_names,"
     "has_own_stores,own_store_count_col,own_store_count_mex,"
-    "on_mercadolibre,on_amazon,on_rappi,"
+    "on_mercadolibre,on_amazon,on_rappi,on_walmart,on_liverpool,on_coppel,"
     "overall_potential_score"
 )
 

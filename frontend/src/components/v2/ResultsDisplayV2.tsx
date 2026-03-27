@@ -11,6 +11,8 @@ import { MetaAdsCardV2 } from './MetaAdsCardV2';
 import { TikTokAdsCardV2 } from './TikTokAdsCardV2';
 import { PredictionCardV2 } from './PredictionCardV2';
 import { HubSpotCardV2 } from './HubSpotCardV2';
+import { RetailChannelsCardV2 } from './RetailChannelsCardV2';
+import { PotentialScoreCardV2 } from './PotentialScoreCardV2';
 import { WorkflowReport } from '../WorkflowReport';
 import { FeedbackPanel } from '../FeedbackPanel';
 
@@ -179,7 +181,17 @@ export function ResultsDisplayV2({ results }: ResultsDisplayV2Props) {
           domain={domain}
           feedback={feedback}
         />
+
+        {/* Canales Retail */}
+        <RetailChannelsCardV2
+          results={results}
+          domain={domain}
+          feedback={feedback}
+        />
       </div>
+
+      {/* Potential Score (full-width) */}
+      <PotentialScoreCardV2 results={results} />
 
       {/* Workflow Log */}
       {results.workflow_log && results.workflow_log.length > 0 && (

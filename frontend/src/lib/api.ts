@@ -25,6 +25,7 @@ function authHeaders(extra: Record<string, string> = {}): Record<string, string>
 
 export async function analyzeUrlV2(
   url: string,
+  geography: string,
   onStep: (step: PipelineStep) => void,
   onResult: (result: EnrichmentV2Results) => void,
   onError: (error: string) => void,
@@ -32,7 +33,7 @@ export async function analyzeUrlV2(
   const response = await fetch(`${API_BASE}/api/v2/enrichment/analyze-stream`, {
     method: 'POST',
     headers: authHeaders({ 'Content-Type': 'application/json' }),
-    body: JSON.stringify({ url }),
+    body: JSON.stringify({ url, geography }),
   });
 
   if (!response.ok) {

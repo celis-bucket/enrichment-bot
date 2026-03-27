@@ -50,7 +50,7 @@ result = run_retail_enrichment(
 | R1 | Distribuidores | `detect_distributors` | 0-1 Serper | `has_distributors: bool` |
 | R2 | Tiendas Propias | `detect_own_stores` | 1-2 Serper (Places) | `has_own_stores: bool`, `own_store_count_col: int`, `own_store_count_mex: int` |
 | R3 | Tiendas Multimarca | `detect_multibrand_stores` | 0 | `has_multibrand_stores: bool`, `multibrand_store_names: list` |
-| R4 | Marketplaces | `detect_marketplaces` | 0-6 Serper (skips if Shopping found) | `on_mercadolibre: bool`, `on_amazon: bool`, `on_rappi: bool` |
+| R4 | Marketplaces | `detect_marketplaces` | 0-7 Serper (skips if Shopping found) | COL: `on_mercadolibre`, `on_amazon`, `on_rappi`; MEX: `on_mercadolibre`, `on_amazon`, `on_walmart`, `on_liverpool`, `on_coppel`, `on_tiktok_shop` |
 
 **Total queries per brand**: 1 SearchAPI + 1-5 Serper (average ~4, down from ~6)
 
@@ -96,10 +96,15 @@ Brand names vary across sources (domain, LLM extraction, store APIs, Apollo). Th
 
 **False positive protection**: Names with <= 3 chars only use Stage 1. Names with <= 4 chars skip Stages 3b and 4. Substring match requires the shorter name to be >= 40% of the longer name's length.
 
-### R4: Marketplaces + Rappi
-1. **HTML links**: Check for outbound links to mercadolibre, amazon, rappi domains.
-2. **Google site: search**: `site:mercadolibre.com.co "{brand}"`, `site:amazon.com.mx "{brand}"`, `site:rappi.com.co "{brand}"` — filtered by geography.
-3. **Rappi filtering**: Only searched for CPG-relevant categories (Alimentos, Bebidas, Cosmeticos-belleza, Salud y Bienestar, Suplementos, Mascotas, Farmacéutica, Hogar, Infantiles y Bebés).
+### R4: Marketplaces
+Marketplaces vary by geography:
+- **COL**: MercadoLibre, Amazon, Rappi
+- **MEX**: MercadoLibre, Amazon, Walmart, Liverpool, Coppel, TikTok Shop
+
+1. **HTML links**: Check for outbound links to marketplace domains.
+2. **Google site: search**: `site:{marketplace_domain} "{brand}"` — filtered by geography.
+3. **Rappi filtering** (COL only): Only searched for CPG-relevant categories (Alimentos, Bebidas, Cosmeticos-belleza, Salud y Bienestar, Suplementos, Mascotas, Farmacéutica, Hogar, Infantiles y Bebés).
+4. **TikTok Shop** (MEX only): 3-tier detection — (a) HTML links to `shop.tiktok.com`, (b) TikTok profile bio link inspection, (c) Google `site:shop.tiktok.com "{brand}"` fallback. Accepts optional `tiktok_profile_data` for tier (b).
 
 ## Output Schema
 
@@ -115,7 +120,11 @@ All outputs are written to `enriched_companies` table via upsert on domain:
 | `multibrand_store_names` | JSONB | List of store names from controlled vocabulary |
 | `on_mercadolibre` | BOOLEAN | Brand present on MercadoLibre |
 | `on_amazon` | BOOLEAN | Brand present on Amazon |
-| `on_rappi` | BOOLEAN | Brand present on Rappi (NULL if not CPG) |
+| `on_rappi` | BOOLEAN | Brand present on Rappi (COL only, NULL if not CPG) |
+| `on_walmart` | BOOLEAN | Brand present on Walmart (MEX only) |
+| `on_liverpool` | BOOLEAN | Brand present on Liverpool (MEX only) |
+| `on_coppel` | BOOLEAN | Brand present on Coppel (MEX only) |
+| `on_tiktok_shop` | BOOLEAN | Brand present on TikTok Shop (MEX only) |
 | `retail_confidence` | NUMERIC | Ratio of channels successfully evaluated |
 | `retail_enriched_at` | TIMESTAMPTZ | When retail enrichment was last run |
 

@@ -360,6 +360,21 @@ def _build_v2_response(enrichment_result, prediction: dict) -> dict:
         "hubspot_contact_exists": enrichment_result.hubspot_contact_exists,
         "hubspot_lifecycle_label": enrichment_result.hubspot_lifecycle_label,
         "hubspot_last_contacted": enrichment_result.hubspot_last_contacted,
+        # Retail Channels
+        "has_distributors": enrichment_result.has_distributors,
+        "has_own_stores": enrichment_result.has_own_stores,
+        "own_store_count_col": enrichment_result.own_store_count_col,
+        "own_store_count_mex": enrichment_result.own_store_count_mex,
+        "has_multibrand_stores": enrichment_result.has_multibrand_stores,
+        "multibrand_store_names": enrichment_result.multibrand_store_names or [],
+        "on_mercadolibre": enrichment_result.on_mercadolibre,
+        "on_amazon": enrichment_result.on_amazon,
+        "on_rappi": enrichment_result.on_rappi,
+        "on_walmart": enrichment_result.on_walmart,
+        "on_liverpool": enrichment_result.on_liverpool,
+        "on_coppel": enrichment_result.on_coppel,
+        "marketplace_names": enrichment_result.marketplace_names or [],
+        "retail_confidence": enrichment_result.retail_confidence,
         # Prediction
         "prediction": pred_model,
         # Potential Scoring
@@ -398,6 +413,7 @@ async def analyze_stream_v2(request: SyncEnrichmentRequest, api_key: str = Depen
         try:
             result = run_enrichment(
                 raw_url=request.url,
+                country=request.geography,
                 skip_apollo=False,
                 enable_google_demand=True,
                 on_step=on_step,

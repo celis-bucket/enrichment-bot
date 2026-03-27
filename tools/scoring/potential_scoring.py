@@ -14,7 +14,7 @@ import math
 # ---------------------------------------------------------------------------
 
 # Marketplace sets per country (canonical names as they appear in marketplace_names)
-MEXICO_MARKETPLACES = {"Amazon", "MercadoLibre", "Liverpool", "Coppel", "Walmart"}
+MEXICO_MARKETPLACES = {"Amazon", "MercadoLibre", "Liverpool", "Coppel", "Walmart", "TikTok Shop"}
 COLOMBIA_MARKETPLACES = {"MercadoLibre", "Rappi", "Falabella", "Éxito", "Exito"}
 
 # Category fit tiers
@@ -100,11 +100,15 @@ def calculate_retail_size_score(
     multibrand_store_names: list | None,
     has_own_stores: bool | None,
     own_store_count: int | None,
-    on_mercadolibre: bool | None,
-    on_amazon: bool | None,
-    on_rappi: bool | None,
-    marketplace_names: list | None,
-    geography: str | None,
+    on_mercadolibre: bool | None = None,
+    on_amazon: bool | None = None,
+    on_rappi: bool | None = None,
+    marketplace_names: list | None = None,
+    geography: str | None = None,
+    on_walmart: bool | None = None,
+    on_liverpool: bool | None = None,
+    on_coppel: bool | None = None,
+    on_tiktok_shop: bool | None = None,
 ) -> int:
     """
     Retail size score (0-100).
@@ -141,6 +145,14 @@ def calculate_retail_size_score(
         detected_marketplaces.add("Amazon")
     if on_rappi:
         detected_marketplaces.add("Rappi")
+    if on_walmart:
+        detected_marketplaces.add("Walmart")
+    if on_liverpool:
+        detected_marketplaces.add("Liverpool")
+    if on_coppel:
+        detected_marketplaces.add("Coppel")
+    if on_tiktok_shop:
+        detected_marketplaces.add("TikTok Shop")
 
     # From marketplace_names list (populated by retail enrichment)
     if marketplace_names:
@@ -279,6 +291,10 @@ def score_company(data: dict) -> dict:
         on_mercadolibre=data.get("on_mercadolibre"),
         on_amazon=data.get("on_amazon"),
         on_rappi=data.get("on_rappi"),
+        on_walmart=data.get("on_walmart"),
+        on_liverpool=data.get("on_liverpool"),
+        on_coppel=data.get("on_coppel"),
+        on_tiktok_shop=data.get("on_tiktok_shop"),
         marketplace_names=data.get("marketplace_names"),
         geography=geography,
     )

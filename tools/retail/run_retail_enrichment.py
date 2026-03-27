@@ -46,6 +46,7 @@ def run_retail_enrichment(
     knowledge_graph: Optional[Dict] = None,
     ig_username: Optional[str] = None,
     apollo_name: Optional[str] = None,
+    tiktok_profile_data: Optional[Dict] = None,
     skip_cache: bool = False,
     on_step: Optional[Callable[[str, str, int, str], None]] = None,
 ) -> Dict[str, Any]:
@@ -70,8 +71,8 @@ def run_retail_enrichment(
         Dict with:
             - success: bool
             - data: {has_distributors, has_own_stores, own_store_count_col, own_store_count_mex,
-                     has_multibrand_stores, multibrand_store_names, on_mercadolibre, on_amazon,
-                     on_rappi, retail_confidence}
+                     has_multibrand_stores, multibrand_store_names, on_<marketplace> (dynamic),
+                     marketplace_names, retail_confidence}
             - steps: list of step log entries
             - error: str or None
     """
@@ -91,6 +92,10 @@ def run_retail_enrichment(
         "on_mercadolibre": None,
         "on_amazon": None,
         "on_rappi": None,
+        "on_walmart": None,
+        "on_liverpool": None,
+        "on_coppel": None,
+        "on_tiktok_shop": None,
         "marketplace_names": [],
         "retail_confidence": None,
     }
@@ -289,23 +294,21 @@ def run_retail_enrichment(
             mp_result = detect_marketplaces(
                 html, domain, brand_name, geography, category=category,
                 shopping_marketplaces=shopping_marketplaces,
+                tiktok_profile_data=tiktok_profile_data,
             )
             ms = int((time.time() - t0) * 1000)
             mp_data = mp_result.get("data", {}) if mp_result.get("success") else {}
             if domain and mp_data:
                 cache_set(domain, "retail_marketplaces", mp_data)
 
-        if mp_data.get("on_mercadolibre") is not None:
-            data["on_mercadolibre"] = mp_data["on_mercadolibre"]
-            data["on_amazon"] = mp_data.get("on_amazon")
-            data["on_rappi"] = mp_data.get("on_rappi")
+        # Copy all on_* keys from marketplace detection result
+        mp_keys_found = [k for k in mp_data if k.startswith("on_")]
+        if mp_keys_found:
             parts = []
-            if mp_data["on_mercadolibre"]:
-                parts.append("ML")
-            if mp_data.get("on_amazon"):
-                parts.append("AMZ")
-            if mp_data.get("on_rappi"):
-                parts.append("Rappi")
+            for k in mp_keys_found:
+                data[k] = mp_data[k]
+                if mp_data[k]:
+                    parts.append(k.replace("on_", "").upper())
             _step("retail_marketplaces", "ok", ms,
                   f"Present: {', '.join(parts) if parts else 'none'}")
             channels_succeeded += 1
@@ -316,17 +319,15 @@ def run_retail_enrichment(
         _step("retail_marketplaces", "fail", ms, str(e))
 
     # ===== Build marketplace_names from all sources =====
+    from retail.detect_marketplaces import _marketplace_label
     mp_names: Set[str] = set()
     # From Google Shopping
     for mp_name in shopping_marketplaces.keys():
         mp_names.add(mp_name)
-    # From marketplace detection (legacy fields)
-    if data.get("on_mercadolibre"):
-        mp_names.add("MercadoLibre")
-    if data.get("on_amazon"):
-        mp_names.add("Amazon")
-    if data.get("on_rappi"):
-        mp_names.add("Rappi")
+    # From marketplace detection (on_* fields)
+    for key, val in data.items():
+        if key.startswith("on_") and val:
+            mp_names.add(_marketplace_label(key.replace("on_", "")))
     data["marketplace_names"] = sorted(mp_names)
 
     # ===== FINALIZE =====
@@ -377,6 +378,10 @@ def _write_retail_to_supabase(domain: str, data: Dict[str, Any]) -> bool:
             "on_mercadolibre": data.get("on_mercadolibre"),
             "on_amazon": data.get("on_amazon"),
             "on_rappi": data.get("on_rappi"),
+            "on_walmart": data.get("on_walmart"),
+            "on_liverpool": data.get("on_liverpool"),
+            "on_coppel": data.get("on_coppel"),
+            "on_tiktok_shop": data.get("on_tiktok_shop"),
             "retail_confidence": data.get("retail_confidence"),
             "retail_enriched_at": datetime.now(timezone.utc).isoformat(),
         }
@@ -390,6 +395,17 @@ def _write_retail_to_supabase(domain: str, data: Dict[str, Any]) -> bool:
             json=row,
             timeout=30,
         )
+        # If new columns don't exist yet, retry without them
+        if resp.status_code == 400 and "does not exist" in resp.text:
+            for col in ["on_walmart", "on_liverpool", "on_coppel", "on_tiktok_shop"]:
+                row.pop(col, None)
+            resp = requests.patch(
+                f"{client.rest_url}/enriched_companies",
+                headers=client.headers,
+                params={"domain": f"eq.{domain}"},
+                json=row,
+                timeout=30,
+            )
         resp.raise_for_status()
 
         # Re-compute potential scores with new retail data
@@ -542,12 +558,9 @@ def _run_batch(skip_cache: bool = False, limit: int = 0):
             flags.append(f"STORES(COL:{d.get('own_store_count_col', 0)} MEX:{d.get('own_store_count_mex', 0)})")
         if d.get("has_multibrand_stores"):
             flags.append(f"MULTI({','.join(d.get('multibrand_store_names', [])[:3])})")
-        if d.get("on_mercadolibre"):
-            flags.append("ML")
-        if d.get("on_amazon"):
-            flags.append("AMZ")
-        if d.get("on_rappi"):
-            flags.append("RAPPI")
+        for key, val in d.items():
+            if key.startswith("on_") and val:
+                flags.append(key.replace("on_", "").upper())
         print(f"  => {' | '.join(flags) if flags else 'No retail channels detected'}")
 
     print(f"\n{'=' * 60}")
@@ -577,9 +590,10 @@ if __name__ == "__main__":
         print(f"  Distributors:     {d.get('has_distributors')}")
         print(f"  Own stores:       {d.get('has_own_stores')} (COL: {d.get('own_store_count_col')}, MEX: {d.get('own_store_count_mex')})")
         print(f"  Multibrand:       {d.get('has_multibrand_stores')} ({d.get('multibrand_store_names', [])})")
-        print(f"  MercadoLibre:     {d.get('on_mercadolibre')}")
-        print(f"  Amazon:           {d.get('on_amazon')}")
-        print(f"  Rappi:            {d.get('on_rappi')}")
+        print(f"  Marketplaces:     {d.get('marketplace_names', [])}")
+        for key, val in d.items():
+            if key.startswith("on_"):
+                print(f"    {key}: {val}")
         print(f"  Confidence:       {d.get('retail_confidence')}")
     else:
         parser.print_help()

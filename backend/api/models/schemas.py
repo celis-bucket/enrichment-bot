@@ -11,7 +11,8 @@ from pydantic import BaseModel, Field
 
 class SyncEnrichmentRequest(BaseModel):
     """Request model for synchronous enrichment analysis"""
-    url: str = Field(..., description="E-commerce URL or brand name with country (e.g., 'Armatura Colombia')")
+    url: str = Field(..., description="E-commerce URL or brand name (e.g., 'armatura.com.co')")
+    geography: str = Field(..., description="Country code: COL or MEX", pattern=r"^(COL|MEX)$")
 
 
 # ===== Response Models =====

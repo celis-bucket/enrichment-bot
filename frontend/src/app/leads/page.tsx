@@ -293,7 +293,7 @@ function DetailDrawer({ domain, onClose, onEnrich }: { domain: string; onClose: 
 }
 
 // --- Enrichment Modal ---
-function EnrichModal({ domain, onClose, onDone }: { domain: string; onClose: () => void; onDone: () => void }) {
+function EnrichModal({ domain, geography, onClose, onDone }: { domain: string; geography: string; onClose: () => void; onDone: () => void }) {
   const [steps, setSteps] = useState<PipelineStep[]>([]);
   const [status, setStatus] = useState<'running' | 'done' | 'error'>('running');
   const [error, setError] = useState('');
@@ -301,6 +301,7 @@ function EnrichModal({ domain, onClose, onDone }: { domain: string; onClose: () 
   useEffect(() => {
     analyzeUrlV2(
       domain,
+      geography || 'COL',
       (step) => {
         setSteps((prev) => {
           const existing = prev.findIndex((s) => s.step === step.step);
@@ -492,6 +493,7 @@ export default function LeadsPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [selectedDomain, setSelectedDomain] = useState<string | null>(null);
   const [enrichingDomain, setEnrichingDomain] = useState<string | null>(null);
+  const [enrichingGeo, setEnrichingGeo] = useState<string>('COL');
   const [syncing, setSyncing] = useState(false);
   const [syncMsg, setSyncMsg] = useState('');
 
@@ -714,7 +716,7 @@ export default function LeadsPage() {
                           </button>
                           {l.enrichment_type !== 'full' && l.domain && (
                             <button
-                              onClick={(e) => { e.stopPropagation(); setEnrichingDomain(l.domain || null); }}
+                              onClick={(e) => { e.stopPropagation(); setEnrichingDomain(l.domain || null); setEnrichingGeo(l.geography || 'COL'); }}
                               className="px-2.5 py-1 rounded-md bg-melonn-green text-white
                                          hover:bg-melonn-green/90 transition-colors whitespace-nowrap font-medium"
                             >
@@ -756,6 +758,7 @@ export default function LeadsPage() {
       {enrichingDomain && (
         <EnrichModal
           domain={enrichingDomain}
+          geography={enrichingGeo}
           onClose={() => setEnrichingDomain(null)}
           onDone={fetchLeads}
         />

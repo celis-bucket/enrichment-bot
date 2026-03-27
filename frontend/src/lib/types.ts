@@ -86,6 +86,21 @@ export interface EnrichmentV2Results {
   hubspot_contact_exists?: number | null;
   hubspot_lifecycle_label?: string | null;
   hubspot_last_contacted?: string | null;
+  // Retail Channels
+  has_distributors?: boolean | null;
+  has_own_stores?: boolean | null;
+  own_store_count_col?: number | null;
+  own_store_count_mex?: number | null;
+  has_multibrand_stores?: boolean | null;
+  multibrand_store_names?: string[];
+  on_mercadolibre?: boolean | null;
+  on_amazon?: boolean | null;
+  on_rappi?: boolean | null;
+  on_walmart?: boolean | null;
+  on_liverpool?: boolean | null;
+  on_coppel?: boolean | null;
+  marketplace_names?: string[];
+  retail_confidence?: number | null;
   // Prediction
   prediction?: OrdersPrediction | null;
   // Potential Scoring

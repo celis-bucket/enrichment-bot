@@ -1,7 +1,9 @@
 """
 Marketplace Presence Detection Tool
 
-Purpose: Detect if a brand sells on MercadoLibre, Amazon, and Rappi
+Purpose: Detect if a brand sells on marketplaces relevant to its geography
+  COL: MercadoLibre, Amazon, Rappi
+  MEX: MercadoLibre, Amazon, Walmart, Liverpool, Coppel, TikTok Shop
 Inputs: HTML content, domain, brand name, geography
 Outputs: Binary presence per marketplace + evidence
 Dependencies: tools/core/google_search.py, re, bs4
@@ -9,7 +11,8 @@ Dependencies: tools/core/google_search.py, re, bs4
 Detection strategies:
 1. Check brand website HTML for outbound links to marketplaces
 2. Google site-restricted search on each marketplace domain
-3. Rappi search (for CPG categories: Alimentos, Bebidas, Cosmeticos-belleza, etc.)
+3. Rappi (COL only): only searched for CPG categories
+4. TikTok Shop (MEX only): HTML links + TikTok profile bio + Google fallback
 """
 
 import re
@@ -34,9 +37,28 @@ MARKETPLACE_DOMAINS = {
     },
     "rappi": {
         "COL": "rappi.com.co",
-        "MEX": "rappi.com.mx",
+    },
+    "walmart": {
+        "MEX": "walmart.com.mx",
+    },
+    "liverpool": {
+        "MEX": "liverpool.com.mx",
+    },
+    "coppel": {
+        "MEX": "coppel.com",
+    },
+    "tiktok_shop": {
+        "MEX": "shop.tiktok.com",
     },
 }
+
+# Which marketplaces to evaluate per country
+MARKETPLACES_BY_COUNTRY = {
+    "COL": ["mercadolibre", "amazon", "rappi"],
+    "MEX": ["mercadolibre", "amazon", "walmart", "liverpool", "coppel", "tiktok_shop"],
+}
+# When geography is unknown, evaluate all
+ALL_MARKETPLACES = ["mercadolibre", "amazon", "rappi", "walmart", "liverpool", "coppel", "tiktok_shop"]
 
 # Categories where Rappi presence is most relevant (CPG / consumer goods)
 RAPPI_RELEVANT_CATEGORIES = {
@@ -59,6 +81,21 @@ MARKETPLACE_LINK_PATTERNS = {
     ],
     "rappi": [
         r'rappi\.com\.\w+',
+    ],
+    "walmart": [
+        r'walmart\.com\.mx',
+        r'super\.walmart\.com\.mx',
+    ],
+    "liverpool": [
+        r'liverpool\.com\.mx',
+    ],
+    "coppel": [
+        r'coppel\.com',
+    ],
+    "tiktok_shop": [
+        r'shop\.tiktok\.com',
+        r'tiktok\.com/@[^/]+/shop',
+        r'tiktok\.com/shop',
     ],
 }
 
@@ -175,6 +212,40 @@ def _search_marketplace(brand_name: str, marketplace: str, domain: str,
     }
 
 
+def _check_tiktok_profile_for_shop(tiktok_profile_data: Optional[Dict]) -> bool:
+    """
+    Check if TikTok profile data contains a shop link (bio or bio_link).
+
+    Args:
+        tiktok_profile_data: Profile dict from SearchAPI tiktok_profile engine.
+
+    Returns:
+        True if a TikTok Shop link is found in the profile.
+    """
+    if not tiktok_profile_data:
+        return False
+    try:
+        # Check bio text
+        bio = str(tiktok_profile_data.get("bio", "") or "").lower()
+        if "shop.tiktok.com" in bio or "tiktok.com/shop" in bio:
+            return True
+
+        # Check bio_link field
+        bio_link = str(tiktok_profile_data.get("bio_link", "") or "").lower()
+        if "shop.tiktok.com" in bio_link or "tiktok.com/shop" in bio_link:
+            return True
+
+        # Check links array (some profile responses include this)
+        links = tiktok_profile_data.get("links", []) or []
+        for link in links:
+            link_str = str(link).lower() if link else ""
+            if "shop.tiktok.com" in link_str or "tiktok.com/shop" in link_str:
+                return True
+    except Exception:
+        pass
+    return False
+
+
 def detect_marketplaces(
     html: str,
     domain: str,
@@ -182,88 +253,82 @@ def detect_marketplaces(
     geography: Optional[str] = None,
     category: Optional[str] = None,
     shopping_marketplaces: Optional[Dict[str, bool]] = None,
+    tiktok_profile_data: Optional[Dict] = None,
 ) -> Dict[str, Any]:
     """
-    Detect brand presence on MercadoLibre, Amazon, and Rappi.
+    Detect brand presence on marketplaces relevant to the brand's geography.
+
+    COL: MercadoLibre, Amazon, Rappi
+    MEX: MercadoLibre, Amazon, Walmart, Liverpool, Coppel, TikTok Shop
 
     Args:
         html: Brand website HTML content
         domain: Brand domain
         brand_name: Brand/company name
-        geography: 'COL', 'MEX', or None (searches both)
+        geography: 'COL', 'MEX', or None (searches all)
         category: Product category (used to decide if Rappi is relevant)
+        shopping_marketplaces: Pre-detected marketplaces from Google Shopping
+        tiktok_profile_data: TikTok profile dict (optional, for shop link detection)
 
     Returns:
         Dict with:
             - success: bool
-            - data: {on_mercadolibre, on_amazon, on_rappi, evidence}
+            - data: {on_mercadolibre, on_amazon, on_rappi|on_walmart|on_liverpool|on_coppel|on_tiktok_shop, evidence}
             - error: str or None
     """
     try:
         evidence_list = []
         shop_mp = shopping_marketplaces or {}
 
+        # Determine which marketplaces to evaluate based on geography
+        mp_list = MARKETPLACES_BY_COUNTRY.get(geography, ALL_MARKETPLACES)
+
         # Step 1: Check HTML for outbound marketplace links
         html_links = _check_html_links(html) if html else {}
 
-        # Step 2: Google site: searches for each marketplace
-        # Skip Serper query if Google Shopping already detected the marketplace
+        # Step 2: Detect each marketplace
+        results = {}
+        for mp_key in mp_list:
+            mp_label = _marketplace_label(mp_key)
+            output_key = f"on_{mp_key}"
 
-        # MercadoLibre
-        if shop_mp.get("MercadoLibre"):
-            on_mercadolibre = True
-            evidence_list.append("MercadoLibre: detected via Google Shopping")
-        else:
-            ml_html = html_links.get("mercadolibre", {})
-            if ml_html.get("found"):
-                on_mercadolibre = True
-                evidence_list.append(f"MercadoLibre: link found in website HTML ({ml_html.get('snippet', '')})")
-            else:
-                ml_search = _search_marketplace(brand_name, "mercadolibre", domain, geography)
-                on_mercadolibre = ml_search["found"]
-                evidence_list.append(f"MercadoLibre: {ml_search['evidence']}")
+            # Rappi: skip if category is not CPG-relevant
+            if mp_key == "rappi":
+                skip_rappi = category and category not in RAPPI_RELEVANT_CATEGORIES
+                if skip_rappi:
+                    evidence_list.append(f"{mp_label}: skipped (category '{category}' not CPG)")
+                    results[output_key] = None
+                    continue
 
-        # Amazon
-        if shop_mp.get("Amazon"):
-            on_amazon = True
-            evidence_list.append("Amazon: detected via Google Shopping")
-        else:
-            amz_html = html_links.get("amazon", {})
-            if amz_html.get("found"):
-                on_amazon = True
-                evidence_list.append(f"Amazon: link found in website HTML ({amz_html.get('snippet', '')})")
-            else:
-                amz_search = _search_marketplace(brand_name, "amazon", domain, geography)
-                on_amazon = amz_search["found"]
-                evidence_list.append(f"Amazon: {amz_search['evidence']}")
+            # Check if already detected via Google Shopping
+            if shop_mp.get(mp_label):
+                results[output_key] = True
+                evidence_list.append(f"{mp_label}: detected via Google Shopping")
+                continue
 
-        # Rappi — only search if category is relevant or category is unknown
-        on_rappi = None
-        skip_rappi = category and category not in RAPPI_RELEVANT_CATEGORIES
-        if shop_mp.get("Rappi"):
-            on_rappi = True
-            evidence_list.append("Rappi: detected via Google Shopping")
-        elif skip_rappi:
-            evidence_list.append(f"Rappi: skipped (category '{category}' not CPG)")
-            on_rappi = None
-        else:
-            rappi_html = html_links.get("rappi", {})
-            if rappi_html.get("found"):
-                on_rappi = True
-                evidence_list.append(f"Rappi: link found in website HTML")
-            else:
-                rappi_search = _search_marketplace(brand_name, "rappi", domain, geography)
-                on_rappi = rappi_search["found"]
-                evidence_list.append(f"Rappi: {rappi_search['evidence']}")
+            # Check HTML links
+            html_match = html_links.get(mp_key, {})
+            if html_match.get("found"):
+                results[output_key] = True
+                evidence_list.append(f"{mp_label}: link found in website HTML ({html_match.get('snippet', '')})")
+                continue
+
+            # TikTok Shop: check profile bio before Google fallback
+            if mp_key == "tiktok_shop" and _check_tiktok_profile_for_shop(tiktok_profile_data):
+                results[output_key] = True
+                evidence_list.append(f"{mp_label}: shop link found in TikTok profile bio")
+                continue
+
+            # Google site: search fallback
+            search_result = _search_marketplace(brand_name, mp_key, domain, geography)
+            results[output_key] = search_result["found"]
+            evidence_list.append(f"{mp_label}: {search_result['evidence']}")
+
+        results["evidence"] = evidence_list
 
         return {
             "success": True,
-            "data": {
-                "on_mercadolibre": on_mercadolibre,
-                "on_amazon": on_amazon,
-                "on_rappi": on_rappi,
-                "evidence": evidence_list,
-            },
+            "data": results,
             "error": None,
         }
 
@@ -273,6 +338,20 @@ def detect_marketplaces(
             "data": {},
             "error": f"Marketplace detection error: {str(e)}",
         }
+
+
+def _marketplace_label(mp_key: str) -> str:
+    """Convert marketplace key to display label for evidence and Shopping matching."""
+    labels = {
+        "mercadolibre": "MercadoLibre",
+        "amazon": "Amazon",
+        "rappi": "Rappi",
+        "walmart": "Walmart",
+        "liverpool": "Liverpool",
+        "coppel": "Coppel",
+        "tiktok_shop": "TikTok Shop",
+    }
+    return labels.get(mp_key, mp_key.capitalize())
 
 
 if __name__ == "__main__":
@@ -289,9 +368,9 @@ if __name__ == "__main__":
     print(f"\nSuccess: {result['success']}")
     if result["success"]:
         data = result["data"]
-        print(f"  MercadoLibre: {data['on_mercadolibre']}")
-        print(f"  Amazon: {data['on_amazon']}")
-        print(f"  Rappi: {data['on_rappi']}")
+        for key, val in data.items():
+            if key.startswith("on_"):
+                print(f"  {key}: {val}")
         print(f"\n  Evidence:")
         for ev in data["evidence"]:
             print(f"    - {ev}")
