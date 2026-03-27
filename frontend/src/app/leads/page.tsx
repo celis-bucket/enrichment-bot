@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { Header } from '@/components/Header';
 import { ScoreBar } from '@/components/ScoreBar';
 import { PotentialTierBadge } from '@/components/PotentialTierBadge';
-import { getLeads, getCompany, analyzeUrlV2, syncLeads } from '@/lib/api';
+import { getLeads, getCompany, analyzeUrlV2, syncLeads, submitFeedback } from '@/lib/api';
 import type { LeadListItem, EnrichmentV2Results, PipelineStep } from '@/lib/types';
 
 function fmt(n: number | null | undefined): string {
@@ -244,6 +244,76 @@ function EnrichModal({ domain, onClose, onDone }: { domain: string; onClose: () 
   );
 }
 
+// --- Feedback Button ---
+function FeedbackButton({ domain }: { domain: string }) {
+  const [open, setOpen] = useState(false);
+  const [text, setText] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
+
+  const handleSave = async () => {
+    if (!text.trim()) return;
+    setSaving(true);
+    try {
+      await submitFeedback(domain, 'leads', text.trim());
+      setSaved(true);
+      setText('');
+      setTimeout(() => { setSaved(false); setOpen(false); }, 1200);
+    } catch (err) {
+      console.error('Feedback error:', err);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="relative">
+      <button
+        onClick={(e) => { e.stopPropagation(); setOpen(!open); }}
+        className="px-2 py-1 rounded-md border border-gray-200 text-gray-500
+                   hover:bg-gray-50 hover:text-melonn-purple transition-colors whitespace-nowrap text-xs"
+        title="Dejar feedback"
+      >
+        Feedback
+      </button>
+      {open && (
+        <>
+          <div className="fixed inset-0 z-30" onClick={(e) => { e.stopPropagation(); setOpen(false); }} />
+          <div
+            className="absolute right-0 top-8 z-40 w-64 bg-white rounded-lg shadow-xl border border-gray-200 p-3"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <textarea
+              value={text}
+              onChange={(e) => setText(e.target.value)}
+              placeholder="¿Qué salió mal?"
+              className="w-full h-20 text-xs border border-gray-200 rounded-md p-2 resize-none
+                         focus:outline-none focus:ring-2 focus:ring-melonn-purple/30 focus:border-melonn-purple"
+              autoFocus
+            />
+            <div className="flex justify-end gap-2 mt-2">
+              <button
+                onClick={(e) => { e.stopPropagation(); setOpen(false); }}
+                className="px-2 py-1 text-xs text-gray-500 hover:text-gray-700"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={handleSave}
+                disabled={saving || !text.trim()}
+                className="px-3 py-1 text-xs rounded-md bg-melonn-purple text-white
+                           hover:bg-melonn-purple/90 disabled:opacity-50 font-medium"
+              >
+                {saved ? 'Guardado!' : saving ? 'Guardando...' : 'Guardar'}
+              </button>
+            </div>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
 // --- Filter Select ---
 function FilterSelect({
   label, value, onChange, options,
@@ -296,6 +366,7 @@ export default function LeadsPage() {
   const [worthEnrich, setWorthEnrich] = useState('');
   const [enrichmentType, setEnrichmentType] = useState('');
   const [leadStage, setLeadStage] = useState('');
+  const [owner, setOwner] = useState('');
   const [sortBy, setSortBy] = useState('lite_triage_score');
   const [isLoading, setIsLoading] = useState(true);
   const [selectedDomain, setSelectedDomain] = useState<string | null>(null);
@@ -313,16 +384,20 @@ export default function LeadsPage() {
         lead_stage: leadStage,
         sort_by: sortBy,
       });
-      setLeads(data.companies);
-      setTotal(data.total);
-      setWorthFullCount(data.worth_full_count);
-      setFullyEnrichedCount(data.fully_enriched_count);
+      let filtered = data.companies;
+      if (owner) {
+        filtered = filtered.filter(l => (l.hs_lead_owner || '') === owner);
+      }
+      setLeads(filtered);
+      setTotal(filtered.length);
+      setWorthFullCount(filtered.filter(l => l.worth_full_enrichment).length);
+      setFullyEnrichedCount(filtered.filter(l => l.enrichment_type === 'full').length);
     } catch (err) {
       console.error('Failed to load leads:', err);
     } finally {
       setIsLoading(false);
     }
-  }, [search, worthEnrich, enrichmentType, leadStage, sortBy]);
+  }, [search, worthEnrich, enrichmentType, leadStage, owner, sortBy]);
 
   useEffect(() => { fetchLeads(); }, [fetchLeads]);
 
@@ -401,6 +476,17 @@ export default function LeadsPage() {
             { value: 'Intentando contactar', label: 'Intentando contactar' },
             { value: 'Conectado', label: 'Conectado' },
           ]} />
+          <FilterSelect label="Responsable" value={owner} onChange={setOwner} options={[
+            { value: '', label: 'Todos los responsables' },
+            { value: 'Alejandra Gil Rivera', label: 'Alejandra Gil' },
+            { value: 'Angie Aristizabal', label: 'Angie Aristizabal' },
+            { value: 'Camila Quiceno', label: 'Camila Quiceno' },
+            { value: 'Aury Giselly Osuna Saavedra', label: 'Aury Osuna' },
+            { value: 'Daniela Garcia Viasus', label: 'Daniela Garcia' },
+            { value: 'Rogers Belandria', label: 'Rogers Belandria' },
+            { value: 'Yeraldine Prieto', label: 'Yeraldine Prieto' },
+            { value: 'Esteban Sanchez', label: 'Esteban Sanchez' },
+          ]} />
           <FilterSelect label="Ordenar" value={sortBy} onChange={setSortBy} options={[
             { value: 'lite_triage_score', label: 'Score' },
             { value: 'ig_followers', label: 'IG Followers' },
@@ -425,16 +511,17 @@ export default function LeadsPage() {
                   <th className="px-2 py-2.5 font-semibold whitespace-nowrap">Enrich</th>
                   <th className="px-2 py-2.5 font-semibold whitespace-nowrap text-right">P90 Orders</th>
                   <th className="px-3 py-2.5 font-semibold w-[140px]"></th>
+                  <th className="px-2 py-2.5 font-semibold whitespace-nowrap text-right">Feedback</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-50">
                 {isLoading ? (
                   <tr>
-                    <td colSpan={11} className="px-4 py-12 text-center text-gray-400">Cargando...</td>
+                    <td colSpan={12} className="px-4 py-12 text-center text-gray-400">Cargando...</td>
                   </tr>
                 ) : leads.length === 0 ? (
                   <tr>
-                    <td colSpan={11} className="px-4 py-12 text-center text-gray-400">
+                    <td colSpan={12} className="px-4 py-12 text-center text-gray-400">
                       {search ? 'Ningun lead coincide con los filtros' : 'No hay leads. Haz click en "Sync HubSpot" para importar.'}
                     </td>
                   </tr>
@@ -514,6 +601,9 @@ export default function LeadsPage() {
                             </button>
                           )}
                         </div>
+                      </td>
+                      <td className="px-2 py-2.5 text-right">
+                        {l.domain && <FeedbackButton domain={l.domain} />}
                       </td>
                     </tr>
                     );
