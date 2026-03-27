@@ -270,6 +270,69 @@ class HubSpotContact(BaseModel):
     title: Optional[str] = None
 
 
+# ===== TikTok Shop Models =====
+
+class TikTokShopWeeklyItem(BaseModel):
+    """Single TikTok Shop from the weekly ranking"""
+    shop_name: str
+    company_name: Optional[str] = None
+    category: Optional[str] = None
+    rating: Optional[float] = None
+    sales_count: Optional[float] = None
+    gmv: Optional[float] = None
+    products: Optional[int] = None
+    influencers: Optional[int] = None
+    fastmoss_url: Optional[str] = None
+    week_start: str
+    matched_domain: Optional[str] = None
+    wow_sales_pct: Optional[float] = None
+    wow_gmv_pct: Optional[float] = None
+    is_new: bool = False
+
+
+class TikTokWeeklyResponse(BaseModel):
+    """Paginated weekly TikTok Shop ranking"""
+    shops: List[TikTokShopWeeklyItem] = Field(default_factory=list)
+    total: int = 0
+    page: int = 1
+    limit: int = 50
+    week_start: Optional[str] = None
+    prev_week_start: Optional[str] = None
+    total_new: int = 0
+
+
+class TikTokShopHistoryItem(BaseModel):
+    """Single week snapshot for a shop"""
+    week_start: str
+    sales_count: Optional[float] = None
+    gmv: Optional[float] = None
+    products: Optional[int] = None
+    rating: Optional[float] = None
+
+
+class TikTokShopHistoryResponse(BaseModel):
+    """Time-series history for a single shop"""
+    shop_name: str
+    matched_domain: Optional[str] = None
+    category: Optional[str] = None
+    history: List[TikTokShopHistoryItem] = Field(default_factory=list)
+
+
+class TikTokShopForDomainResponse(BaseModel):
+    """TikTok Shop data for a single enriched company"""
+    shop_name: Optional[str] = None
+    sales_count: Optional[float] = None
+    gmv: Optional[float] = None
+    products: Optional[int] = None
+    rating: Optional[float] = None
+    influencers: Optional[int] = None
+    fastmoss_url: Optional[str] = None
+    week_start: Optional[str] = None
+    wow_sales_pct: Optional[float] = None
+    wow_gmv_pct: Optional[float] = None
+    has_data: bool = False
+
+
 class HubSpotDetailResponse(BaseModel):
     """Extended HubSpot company detail for the history modal"""
     company_name: str = ""

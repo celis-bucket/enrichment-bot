@@ -10,6 +10,9 @@ import type {
   LeadListResponse,
   FeedbackItem,
   HubSpotDetail,
+  TikTokWeeklyResponse,
+  TikTokShopHistoryResponse,
+  TikTokShopForDomainResponse,
 } from './types';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
@@ -273,5 +276,60 @@ export async function getFeedback(domain: string): Promise<FeedbackItem[]> {
     return data.feedback || [];
   } catch {
     return [];
+  }
+}
+
+
+// ===== TikTok Shop Dashboard API =====
+
+export async function getTikTokWeekly(params?: {
+  page?: number;
+  limit?: number;
+  category?: string;
+  sort_by?: string;
+  search?: string;
+  filter?: string;
+}): Promise<TikTokWeeklyResponse> {
+  const searchParams = new URLSearchParams();
+  if (params?.page) searchParams.set('page', String(params.page));
+  if (params?.limit) searchParams.set('limit', String(params.limit));
+  if (params?.category) searchParams.set('category', params.category);
+  if (params?.sort_by) searchParams.set('sort_by', params.sort_by);
+  if (params?.search) searchParams.set('search', params.search);
+  if (params?.filter) searchParams.set('filter', params.filter);
+
+  const response = await fetch(
+    `${API_BASE}/api/v2/tiktok/weekly?${searchParams.toString()}`,
+    { headers: authHeaders() }
+  );
+  if (!response.ok) {
+    return { shops: [], total: 0, page: 1, limit: 50, total_new: 0 };
+  }
+  return response.json();
+}
+
+export async function getTikTokShopHistory(shopName: string): Promise<TikTokShopHistoryResponse> {
+  const response = await fetch(
+    `${API_BASE}/api/v2/tiktok/shop/${encodeURIComponent(shopName)}/history`,
+    { headers: authHeaders() }
+  );
+  if (!response.ok) {
+    throw new Error(`Shop not found: ${shopName}`);
+  }
+  return response.json();
+}
+
+export async function getTikTokShopForDomain(domain: string): Promise<TikTokShopForDomainResponse> {
+  try {
+    const response = await fetch(
+      `${API_BASE}/api/v2/tiktok/shop-for-domain/${encodeURIComponent(domain)}`,
+      { headers: authHeaders() }
+    );
+    if (!response.ok) {
+      return { has_data: false };
+    }
+    return response.json();
+  } catch {
+    return { has_data: false };
   }
 }

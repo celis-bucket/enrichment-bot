@@ -99,6 +99,7 @@ export interface EnrichmentV2Results {
   on_walmart?: boolean | null;
   on_liverpool?: boolean | null;
   on_coppel?: boolean | null;
+  on_tiktok_shop?: boolean | null;
   marketplace_names?: string[];
   retail_confidence?: number | null;
   // Prediction
@@ -226,6 +227,64 @@ export interface HubSpotContact {
   name?: string | null;
   email?: string | null;
   title?: string | null;
+}
+
+// ===== TikTok Shop Types =====
+
+export interface TikTokShopWeeklyItem {
+  shop_name: string;
+  company_name?: string | null;
+  category?: string | null;
+  rating?: number | null;
+  sales_count?: number | null;
+  gmv?: number | null;
+  products?: number | null;
+  influencers?: number | null;
+  fastmoss_url?: string | null;
+  week_start: string;
+  matched_domain?: string | null;
+  wow_sales_pct?: number | null;
+  wow_gmv_pct?: number | null;
+  is_new: boolean;
+}
+
+export interface TikTokWeeklyResponse {
+  shops: TikTokShopWeeklyItem[];
+  total: number;
+  page: number;
+  limit: number;
+  week_start?: string | null;
+  prev_week_start?: string | null;
+  total_new: number;
+}
+
+export interface TikTokShopHistoryItem {
+  week_start: string;
+  sales_count?: number | null;
+  gmv?: number | null;
+  products?: number | null;
+  rating?: number | null;
+}
+
+export interface TikTokShopHistoryResponse {
+  shop_name: string;
+  matched_domain?: string | null;
+  category?: string | null;
+  history: TikTokShopHistoryItem[];
+}
+
+export interface TikTokShopForDomainResponse {
+  shop_name?: string | null;
+  sales_count?: number | null;
+  gmv?: number | null;
+  products?: number | null;
+  rating?: number | null;
+  influencers?: number | null;
+  fastmoss_url?: string | null;
+  week_start?: string | null;
+  wow_sales_pct?: number | null;
+  wow_gmv_pct?: number | null;
+  has_data: boolean;
 }
 
 export interface HubSpotDetail {

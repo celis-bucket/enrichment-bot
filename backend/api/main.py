@@ -54,6 +54,11 @@ from api.models.schemas import (
     FeedbackResolveRequest,
     UnresolvedFeedbackResponse,
     HubSpotDetailResponse,
+    TikTokShopWeeklyItem,
+    TikTokWeeklyResponse,
+    TikTokShopHistoryResponse,
+    TikTokShopHistoryItem,
+    TikTokShopForDomainResponse,
 )
 from hubspot.hubspot_lookup import get_company_detail
 
@@ -776,6 +781,21 @@ async def get_company(domain: str, api_key: str = Depends(verify_api_key)):
             "hubspot_contact_exists": row.get("hubspot_contact_exists"),
             "hubspot_lifecycle_label": row.get("hubspot_lifecycle_label"),
             "hubspot_last_contacted": row.get("hubspot_last_contacted"),
+            # Retail
+            "has_distributors": row.get("has_distributors"),
+            "has_own_stores": row.get("has_own_stores"),
+            "own_store_count_col": row.get("own_store_count_col"),
+            "own_store_count_mex": row.get("own_store_count_mex"),
+            "has_multibrand_stores": row.get("has_multibrand_stores"),
+            "multibrand_store_names": row.get("multibrand_store_names") or [],
+            "on_mercadolibre": row.get("on_mercadolibre"),
+            "on_amazon": row.get("on_amazon"),
+            "on_rappi": row.get("on_rappi"),
+            "on_walmart": row.get("on_walmart"),
+            "on_liverpool": row.get("on_liverpool"),
+            "on_coppel": row.get("on_coppel"),
+            "on_tiktok_shop": row.get("on_tiktok_shop"),
+            "retail_confidence": row.get("retail_confidence"),
             "prediction": prediction,
             # Potential Scoring
             "ecommerce_size_score": row.get("ecommerce_size_score"),
@@ -947,6 +967,239 @@ async def retail_analyze_stream(request: RetailAnalyzeRequest, api_key: str = De
 
     return StreamingResponse(event_generator(), media_type="text/event-stream",
                              headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
+
+
+# ===== TikTok Shop Dashboard Endpoints =====
+
+@app.get("/api/v2/tiktok/weekly", response_model=TikTokWeeklyResponse, tags=["TikTok"])
+async def tiktok_weekly(
+    page: int = Query(1, ge=1),
+    limit: int = Query(50, ge=1, le=200),
+    category: str = Query("", description="Filter by category"),
+    sort_by: str = Query("gmv", description="Sort: gmv, sales_count, wow_sales, wow_gmv"),
+    search: str = Query("", description="Search shop name"),
+    filter: str = Query("all", description="Filter: all, new, rising, falling"),
+    api_key: str = Depends(verify_api_key),
+):
+    """Weekly TikTok Shop ranking with WoW deltas."""
+    import requests as _requests
+
+    try:
+        client = supabase_client or get_supabase_client()
+
+        # Get the two most recent week_start values
+        weeks_resp = _requests.get(
+            f"{client.rest_url}/tiktok_shop_weekly",
+            headers=client.headers,
+            params={"select": "week_start", "order": "week_start.desc", "limit": "2",
+                    "week_start": "not.is.null"},
+            timeout=15,
+        )
+        week_dates = list({r["week_start"] for r in weeks_resp.json()})
+        week_dates.sort(reverse=True)
+
+        if not week_dates:
+            return TikTokWeeklyResponse()
+
+        current_week = week_dates[0]
+        prev_week = week_dates[1] if len(week_dates) > 1 else None
+
+        # Fetch current week data
+        params = {
+            "select": "shop_name,company_name,category,rating,sales_count,gmv,products,influencers,fastmoss_url,week_start,matched_domain",
+            "week_start": f"eq.{current_week}",
+            "order": f"{'gmv' if sort_by in ('gmv', 'wow_gmv') else 'sales_count'}.desc.nullslast",
+        }
+        if category:
+            params["category"] = f"ilike.*{category}*"
+        if search:
+            params["shop_name"] = f"ilike.*{search}*"
+
+        cur_resp = _requests.get(
+            f"{client.rest_url}/tiktok_shop_weekly",
+            headers={**client.headers, "Prefer": "count=exact"},
+            params=params,
+            timeout=15,
+        )
+        current_shops = cur_resp.json()
+        total_count = int(cur_resp.headers.get("content-range", "0-0/0").split("/")[-1])
+
+        # Fetch previous week for deltas
+        prev_lookup = {}
+        if prev_week:
+            prev_resp = _requests.get(
+                f"{client.rest_url}/tiktok_shop_weekly",
+                headers=client.headers,
+                params={
+                    "select": "shop_name,sales_count,gmv",
+                    "week_start": f"eq.{prev_week}",
+                },
+                timeout=15,
+            )
+            for r in prev_resp.json():
+                prev_lookup[r["shop_name"]] = r
+
+        # Build items with deltas
+        items = []
+        for shop in current_shops:
+            prev = prev_lookup.get(shop["shop_name"])
+            is_new = prev is None and prev_week is not None
+
+            wow_sales = None
+            wow_gmv = None
+            if prev:
+                prev_sales = prev.get("sales_count")
+                cur_sales = shop.get("sales_count")
+                if prev_sales and cur_sales and prev_sales > 0:
+                    wow_sales = round(((cur_sales - prev_sales) / prev_sales) * 100, 1)
+
+                prev_gmv = prev.get("gmv")
+                cur_gmv = shop.get("gmv")
+                if prev_gmv and cur_gmv and prev_gmv > 0:
+                    wow_gmv = round(((cur_gmv - prev_gmv) / prev_gmv) * 100, 1)
+
+            items.append(TikTokShopWeeklyItem(
+                shop_name=shop["shop_name"],
+                company_name=shop.get("company_name"),
+                category=shop.get("category"),
+                rating=shop.get("rating"),
+                sales_count=shop.get("sales_count"),
+                gmv=shop.get("gmv"),
+                products=shop.get("products"),
+                influencers=shop.get("influencers"),
+                fastmoss_url=shop.get("fastmoss_url"),
+                week_start=shop.get("week_start", current_week),
+                matched_domain=shop.get("matched_domain"),
+                wow_sales_pct=wow_sales,
+                wow_gmv_pct=wow_gmv,
+                is_new=is_new,
+            ))
+
+        # Apply filter
+        if filter == "new":
+            items = [i for i in items if i.is_new]
+        elif filter == "rising":
+            items = [i for i in items if i.wow_sales_pct is not None and i.wow_sales_pct > 0]
+        elif filter == "falling":
+            items = [i for i in items if i.wow_sales_pct is not None and i.wow_sales_pct < 0]
+
+        # Sort by WoW if requested
+        if sort_by == "wow_sales":
+            items.sort(key=lambda x: x.wow_sales_pct or 0, reverse=True)
+        elif sort_by == "wow_gmv":
+            items.sort(key=lambda x: x.wow_gmv_pct or 0, reverse=True)
+
+        total_new = sum(1 for i in items if i.is_new) if filter == "all" else 0
+        total_filtered = len(items)
+
+        # Paginate
+        start = (page - 1) * limit
+        items = items[start:start + limit]
+
+        return TikTokWeeklyResponse(
+            shops=items,
+            total=total_filtered if filter != "all" else total_count,
+            page=page,
+            limit=limit,
+            week_start=current_week,
+            prev_week_start=prev_week,
+            total_new=total_new,
+        )
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/v2/tiktok/shop/{shop_name}/history", response_model=TikTokShopHistoryResponse, tags=["TikTok"])
+async def tiktok_shop_history(shop_name: str, api_key: str = Depends(verify_api_key)):
+    """Get weekly time-series for a single TikTok shop."""
+    import requests as _requests
+
+    try:
+        client = supabase_client or get_supabase_client()
+        resp = _requests.get(
+            f"{client.rest_url}/tiktok_shop_weekly",
+            headers=client.headers,
+            params={
+                "select": "shop_name,matched_domain,category,week_start,sales_count,gmv,products,rating",
+                "shop_name": f"eq.{shop_name}",
+                "order": "week_start.asc",
+            },
+            timeout=15,
+        )
+        rows = resp.json()
+        if not rows:
+            raise HTTPException(status_code=404, detail=f"Shop not found: {shop_name}")
+
+        return TikTokShopHistoryResponse(
+            shop_name=shop_name,
+            matched_domain=rows[0].get("matched_domain"),
+            category=rows[0].get("category"),
+            history=[TikTokShopHistoryItem(
+                week_start=r["week_start"],
+                sales_count=r.get("sales_count"),
+                gmv=r.get("gmv"),
+                products=r.get("products"),
+                rating=r.get("rating"),
+            ) for r in rows],
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/v2/tiktok/shop-for-domain/{domain}", response_model=TikTokShopForDomainResponse, tags=["TikTok"])
+async def tiktok_shop_for_domain(domain: str, api_key: str = Depends(verify_api_key)):
+    """Get TikTok Shop data for a company by its domain (for enrichment card)."""
+    import requests as _requests
+
+    try:
+        client = supabase_client or get_supabase_client()
+        resp = _requests.get(
+            f"{client.rest_url}/tiktok_shop_weekly",
+            headers=client.headers,
+            params={
+                "select": "shop_name,sales_count,gmv,products,rating,influencers,fastmoss_url,week_start",
+                "matched_domain": f"eq.{domain.lower().strip()}",
+                "order": "week_start.desc",
+                "limit": "2",
+            },
+            timeout=15,
+        )
+        rows = resp.json()
+
+        if not rows:
+            return TikTokShopForDomainResponse(has_data=False)
+
+        latest = rows[0]
+        wow_sales = None
+        wow_gmv = None
+
+        if len(rows) > 1:
+            prev = rows[1]
+            if prev.get("sales_count") and latest.get("sales_count") and prev["sales_count"] > 0:
+                wow_sales = round(((latest["sales_count"] - prev["sales_count"]) / prev["sales_count"]) * 100, 1)
+            if prev.get("gmv") and latest.get("gmv") and prev["gmv"] > 0:
+                wow_gmv = round(((latest["gmv"] - prev["gmv"]) / prev["gmv"]) * 100, 1)
+
+        return TikTokShopForDomainResponse(
+            shop_name=latest.get("shop_name"),
+            sales_count=latest.get("sales_count"),
+            gmv=latest.get("gmv"),
+            products=latest.get("products"),
+            rating=latest.get("rating"),
+            influencers=latest.get("influencers"),
+            fastmoss_url=latest.get("fastmoss_url"),
+            week_start=latest.get("week_start"),
+            wow_sales_pct=wow_sales,
+            wow_gmv_pct=wow_gmv,
+            has_data=True,
+        )
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 # Run with: uvicorn api.main:app --reload

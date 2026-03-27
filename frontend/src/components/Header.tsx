@@ -69,6 +69,16 @@ export function Header() {
             >
               Retail
             </Link>
+            <Link
+              href="/tiktok"
+              className={`px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${
+                pathname === '/tiktok'
+                  ? 'bg-melonn-purple text-white'
+                  : 'text-melonn-purple-light hover:text-white hover:bg-melonn-navy-light'
+              }`}
+            >
+              TikTok
+            </Link>
           </nav>
         </div>
         <div className="w-3 h-3 rounded-full bg-melonn-green" />

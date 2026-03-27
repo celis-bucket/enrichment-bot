@@ -36,6 +36,7 @@ const MEX_MARKETPLACES = [
   { key: 'on_walmart' as const, label: 'Walmart' },
   { key: 'on_liverpool' as const, label: 'Liverpool' },
   { key: 'on_coppel' as const, label: 'Coppel' },
+  { key: 'on_tiktok_shop' as const, label: 'TikTok Shop' },
 ];
 
 export function RetailChannelsCardV2({ results, domain = '', feedback = [] }: RetailChannelsCardV2Props) {
