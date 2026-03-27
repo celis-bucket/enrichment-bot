@@ -581,7 +581,7 @@ def run_enrichment(
             _step("facebook", "fail", ms, str(e))
 
     # TikTok enabled only for Mexico (not active in Colombia yet)
-    _skip_tiktok = (geography != "MEX")
+    _skip_tiktok = (result.geography != "MEX")
     if tiktok_username and not _skip_tiktok:
         # TikTok followers
         tools_attempted += 1
