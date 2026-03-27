@@ -267,16 +267,21 @@ def fetch_last_lost_deal_dates(client):
 
 def _patch_supabase(domain, update):
     """PATCH a single row in Supabase by domain."""
+    from urllib.parse import quote
     sb_url = os.getenv("SUPABASE_URL")
     sb_key = os.getenv("SUPABASE_SERVICE_KEY")
-    resp = requests.patch(
-        f"{sb_url}/rest/v1/enriched_companies?domain=eq.{domain}",
-        headers={"apikey": sb_key, "Authorization": f"Bearer {sb_key}",
-                 "Content-Type": "application/json", "Prefer": "return=representation"},
-        json=update,
-        timeout=10,
-    )
-    return resp.ok and resp.json()
+    encoded_domain = quote(domain, safe="")
+    try:
+        resp = requests.patch(
+            f"{sb_url}/rest/v1/enriched_companies?domain=eq.{encoded_domain}",
+            headers={"apikey": sb_key, "Authorization": f"Bearer {sb_key}",
+                     "Content-Type": "application/json", "Prefer": "return=representation"},
+            json=update,
+            timeout=10,
+        )
+        return resp.ok and len(resp.json()) > 0
+    except Exception:
+        return False
 
 
 def main():
@@ -309,15 +314,18 @@ def main():
     activity_data = fetch_company_activity_and_tasks(company_ids)
     print(f"  Got activity data for {len(activity_data)} companies")
 
-    # Step 5: Build lookups from Supabase
+    # Step 5: Build lookups from Supabase (preserve original case for PATCH)
     print("Building Supabase lookups...")
     existing = client.select("enriched_companies", columns="domain,hubspot_company_id", eq={"source": "hubspot_leads"})
-    sb_by_domain = {r["domain"].lower(): r["domain"] for r in existing if r.get("domain")}
-    sb_by_cid = {}
+    sb_by_domain = {}  # lowercase -> original case
+    sb_by_cid = {}     # company_id -> original case domain
     for r in existing:
+        d = r.get("domain")
+        if d:
+            sb_by_domain[d.lower()] = d  # preserve original case
         cid = r.get("hubspot_company_id")
-        if cid and r.get("domain"):
-            sb_by_cid[str(cid)] = r["domain"]
+        if cid and d:
+            sb_by_cid[str(cid)] = d  # preserve original case
     print(f"  {len(sb_by_domain)} by domain, {len(sb_by_cid)} by company_id")
 
     # Step 6: Update

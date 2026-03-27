@@ -1,13 +1,12 @@
 """
-Google Search Tool (via Serper API)
+Google Search Tool (via SearchAPI.io)
 
-Purpose: Search Google programmatically using the Serper API
+Purpose: Search Google programmatically using the SearchAPI.io API
 Inputs: Query string, optional parameters (num results, country, language, search type)
 Outputs: Search results with titles, links, snippets, and metadata
 Dependencies: requests, python-dotenv
 
-API Docs: https://serper.dev/
-Rate limits: Depends on plan (free tier: 2,500 queries/month)
+API Docs: https://www.searchapi.io/docs/google
 """
 
 import os
@@ -18,7 +17,16 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-SERPER_API_URL = "https://google.serper.dev"
+SEARCHAPI_BASE_URL = "https://www.searchapi.io/api/v1/search"
+
+# Map search_type to SearchAPI engine
+_ENGINE_MAP = {
+    "search": "google",
+    "news": "google_news",
+    "images": "google_images",
+    "places": "google_maps",
+    "maps": "google_maps",
+}
 
 
 def google_search(
@@ -30,13 +38,13 @@ def google_search(
     page: int = 1,
 ) -> Dict[str, Any]:
     """
-    Perform a Google search using the Serper API.
+    Perform a Google search using the SearchAPI.io API.
 
     Args:
         query: Search query string
         num_results: Number of results to return (default: 10, max: 100)
         search_type: Type of search - "search", "news", "images", "places", "maps"
-        country: Country code for localized results (e.g., "us", "mx", "es")
+        country: Country code for localized results (e.g., "co", "mx", "us")
         language: Language code (e.g., "en", "es")
         page: Page number for pagination (default: 1)
 
@@ -46,68 +54,65 @@ def google_search(
             - data: dict with search results and metadata
             - error: str or None
     """
-    api_key = os.getenv("SERPER_API_KEY")
+    api_key = os.getenv("SEARCHAPI_API_KEY")
     if not api_key:
         return {
             "success": False,
             "data": {},
-            "error": "SERPER_API_KEY not found in environment variables. Add it to .env",
+            "error": "SEARCHAPI_API_KEY not found in environment variables. Add it to .env",
         }
 
-    # Build endpoint URL based on search type
-    valid_types = ["search", "news", "images", "places", "maps"]
-    if search_type not in valid_types:
+    engine = _ENGINE_MAP.get(search_type)
+    if not engine:
         return {
             "success": False,
             "data": {},
-            "error": f"Invalid search_type '{search_type}'. Must be one of: {valid_types}",
+            "error": f"Invalid search_type '{search_type}'. Must be one of: {list(_ENGINE_MAP.keys())}",
         }
 
-    url = f"{SERPER_API_URL}/{search_type}"
-
-    headers = {
-        "X-API-KEY": api_key,
-        "Content-Type": "application/json",
-    }
-
-    payload = {
+    params = {
+        "engine": engine,
         "q": query,
-        "num": num_results,
-        "page": page,
+        "api_key": api_key,
     }
+
+    # Google Maps engine doesn't support num parameter
+    if engine != "google_maps":
+        params["num"] = num_results
+        if page > 1:
+            params["page"] = page
 
     if country:
-        payload["gl"] = country
+        params["gl"] = country
     if language:
-        payload["hl"] = language
+        params["hl"] = language
 
     try:
-        response = requests.post(url, headers=headers, json=payload, timeout=30)
+        response = requests.get(SEARCHAPI_BASE_URL, params=params, timeout=30)
 
         if response.status_code == 401:
             return {
                 "success": False,
                 "data": {},
-                "error": "Invalid SERPER_API_KEY. Check your API key in .env",
+                "error": "Invalid SEARCHAPI_API_KEY. Check your API key in .env",
             }
 
         if response.status_code == 429:
             return {
                 "success": False,
                 "data": {},
-                "error": "Serper API rate limit reached. Check your plan quota.",
+                "error": "SearchAPI rate limit reached. Check your plan quota.",
             }
 
         if response.status_code >= 400:
             return {
                 "success": False,
                 "data": {},
-                "error": f"Serper API error: HTTP {response.status_code} - {response.text}",
+                "error": f"SearchAPI error: HTTP {response.status_code} - {response.text[:300]}",
             }
 
         results = response.json()
 
-        # Normalize the response into a cleaner structure
         parsed = _parse_results(results, search_type)
 
         return {
@@ -120,13 +125,13 @@ def google_search(
         return {
             "success": False,
             "data": {},
-            "error": "Serper API request timed out after 30 seconds",
+            "error": "SearchAPI request timed out after 30 seconds",
         }
     except requests.exceptions.ConnectionError as e:
         return {
             "success": False,
             "data": {},
-            "error": f"Connection error to Serper API: {str(e)}",
+            "error": f"Connection error to SearchAPI: {str(e)}",
         }
     except Exception as e:
         return {
@@ -137,23 +142,23 @@ def google_search(
 
 
 def _parse_results(raw: Dict[str, Any], search_type: str) -> Dict[str, Any]:
-    """Parse raw Serper response into a clean structure."""
+    """Parse raw SearchAPI response into a clean structure matching the existing interface."""
     parsed = {
-        "query": raw.get("searchParameters", {}).get("q", ""),
+        "query": raw.get("search_parameters", {}).get("q", ""),
         "search_type": search_type,
-        "credits_used": raw.get("credits", 1),
+        "credits_used": 1,
     }
 
-    # Search information (total results estimate, search time)
-    if "searchInformation" in raw:
-        si = raw["searchInformation"]
+    # Search information
+    if "search_information" in raw:
+        si = raw["search_information"]
         parsed["search_information"] = {
-            "total_results": int(si.get("totalResults", 0)),
-            "search_time": si.get("searchTime", 0),
+            "total_results": int(si.get("total_results", 0)),
+            "search_time": si.get("time_taken_displayed", 0),
         }
 
-    # Organic results (standard search)
-    if "organic" in raw:
+    # Organic results (SearchAPI uses "organic_results")
+    if "organic_results" in raw:
         parsed["organic"] = [
             {
                 "title": r.get("title", ""),
@@ -161,12 +166,12 @@ def _parse_results(raw: Dict[str, Any], search_type: str) -> Dict[str, Any]:
                 "snippet": r.get("snippet", ""),
                 "position": r.get("position"),
             }
-            for r in raw["organic"]
+            for r in raw["organic_results"]
         ]
 
     # Knowledge graph
-    if "knowledgeGraph" in raw:
-        kg = raw["knowledgeGraph"]
+    if "knowledge_graph" in raw:
+        kg = raw["knowledge_graph"]
         parsed["knowledge_graph"] = {
             "title": kg.get("title", ""),
             "type": kg.get("type", ""),
@@ -176,42 +181,42 @@ def _parse_results(raw: Dict[str, Any], search_type: str) -> Dict[str, Any]:
         }
 
     # Answer box
-    if "answerBox" in raw:
-        ab = raw["answerBox"]
+    if "answer_box" in raw:
+        ab = raw["answer_box"]
         parsed["answer_box"] = {
             "title": ab.get("title", ""),
             "answer": ab.get("answer", ab.get("snippet", "")),
             "link": ab.get("link", ""),
         }
 
-    # People also ask
-    if "peopleAlsoAsk" in raw:
+    # People also ask (SearchAPI uses "related_questions")
+    if "related_questions" in raw:
         parsed["people_also_ask"] = [
             {
                 "question": r.get("question", ""),
                 "snippet": r.get("snippet", ""),
                 "link": r.get("link", ""),
             }
-            for r in raw["peopleAlsoAsk"]
+            for r in raw["related_questions"]
         ]
 
     # Related searches
-    if "relatedSearches" in raw:
+    if "related_searches" in raw:
         parsed["related_searches"] = [
-            r.get("query", "") for r in raw["relatedSearches"]
+            r.get("query", "") for r in raw["related_searches"]
         ]
 
     # News results
-    if "news" in raw:
+    if "news_results" in raw:
         parsed["news"] = [
             {
                 "title": r.get("title", ""),
                 "link": r.get("link", ""),
                 "snippet": r.get("snippet", ""),
                 "date": r.get("date", ""),
-                "source": r.get("source", ""),
+                "source": r.get("source", {}).get("name", "") if isinstance(r.get("source"), dict) else r.get("source", ""),
             }
-            for r in raw["news"]
+            for r in raw["news_results"]
         ]
 
     # Image results
@@ -220,23 +225,34 @@ def _parse_results(raw: Dict[str, Any], search_type: str) -> Dict[str, Any]:
             {
                 "title": r.get("title", ""),
                 "link": r.get("link", ""),
-                "image_url": r.get("imageUrl", ""),
+                "image_url": r.get("original", r.get("thumbnail", "")),
                 "source": r.get("source", ""),
             }
-            for r in raw["images"]
+            for r in raw.get("images", {}).get("images", [])
+            if isinstance(r, dict)
+        ]
+    if "image_results" in raw:
+        parsed["images"] = [
+            {
+                "title": r.get("title", ""),
+                "link": r.get("link", ""),
+                "image_url": r.get("original", {}).get("link", "") if isinstance(r.get("original"), dict) else r.get("original", ""),
+                "source": r.get("source", ""),
+            }
+            for r in raw["image_results"]
         ]
 
-    # Places results
-    if "places" in raw:
+    # Places / Maps results (SearchAPI uses "local_results")
+    if "local_results" in raw:
         parsed["places"] = [
             {
                 "title": r.get("title", ""),
                 "address": r.get("address", ""),
                 "rating": r.get("rating"),
-                "reviews": r.get("ratingCount"),
-                "category": r.get("category", ""),
+                "reviews": r.get("reviews"),
+                "category": r.get("type", ""),
             }
-            for r in raw["places"]
+            for r in raw["local_results"]
         ]
 
     return parsed
@@ -282,10 +298,9 @@ def google_search_batch(
 
 
 if __name__ == "__main__":
-    print("Google Search Tool (Serper API) - Test")
+    print("Google Search Tool (SearchAPI.io) - Test")
     print("=" * 60)
 
-    # Test basic search
     test_query = "Python web scraping best practices"
     print(f"\nSearching: '{test_query}'")
 
@@ -294,7 +309,6 @@ if __name__ == "__main__":
     print(f"Success: {result['success']}")
     if result["success"]:
         data = result["data"]
-        print(f"Credits used: {data.get('credits_used', 'N/A')}")
 
         if "organic" in data:
             print(f"\nOrganic results ({len(data['organic'])}):")

@@ -131,7 +131,7 @@ Artifacts saved to `.tmp/orders_estimator/models/`.
 ## Rate Limits
 | API | Limit | Notes |
 |-----|-------|-------|
-| Serper | 2,500/month free | Google Demand uses 3 queries/company (~800/month) |
+| SearchAPI | Plan-based credits | Google Search/Maps/Shopping, Meta Ads, TikTok Ads |
 | Apify Instagram | Credits-based | ~$0.10/profile, only when IG found |
 | Apify META Ads | Credits-based | ~$0.05-0.20/search |
 | Anthropic | Token-based | ~$0.01/classification |
@@ -139,8 +139,8 @@ Artifacts saved to `.tmp/orders_estimator/models/`.
 | Google Sheets | 100 req/100s | 10-row buffer is safe |
 
 ## Environment Variables
-- `SERPER_API_KEY` — brand resolution + Google Demand
-- `APIFY_API_TOKEN` — Instagram + META Ads
+- `SEARCHAPI_API_KEY` — Google Search, Google Maps, Meta Ads, TikTok Ads, Google Shopping
+- `APIFY_API_TOKEN` — Instagram scraping
 - `ANTHROPIC_API_KEY` — category classification
 - `GOOGLE_SERVICE_ACCOUNT_JSON` — Google Sheets auth
 - `APOLLO_API_KEY` (optional) — contact enrichment

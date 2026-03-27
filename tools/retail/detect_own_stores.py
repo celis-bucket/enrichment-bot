@@ -122,6 +122,16 @@ def _scan_html_for_store_links(html: str, base_url: str) -> List[Dict]:
                             "match_type": "href",
                         })
                         break
+
+        # VTEX store-locator app: rendered client-side, no <a> tags in HTML.
+        # Detect the app and add the standard route as a candidate.
+        if not candidates and 'store-locator@' in html:
+            candidates.append({
+                "url": urljoin(base_url, "/stores"),
+                "anchor_text": "VTEX store-locator app",
+                "match_type": "vtex_app",
+            })
+
     except Exception:
         pass
 
