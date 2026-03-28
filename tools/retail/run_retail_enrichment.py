@@ -24,6 +24,8 @@ import sys
 import time
 import json
 import argparse
+import threading
+from concurrent.futures import ThreadPoolExecutor
 from typing import Optional, Dict, Any, Callable, List, Set
 from datetime import datetime, timezone
 
@@ -100,13 +102,16 @@ def run_retail_enrichment(
         "retail_confidence": None,
     }
 
+    _step_lock = threading.Lock()
+
     def _step(name: str, status: str, duration_ms: int, detail: str = ""):
-        steps.append({
-            "step": name,
-            "status": status,
-            "duration_ms": duration_ms,
-            "detail": detail,
-        })
+        with _step_lock:
+            steps.append({
+                "step": name,
+                "status": status,
+                "duration_ms": duration_ms,
+                "detail": detail,
+            })
         if on_step:
             try:
                 on_step(name, status, duration_ms, detail)
@@ -177,146 +182,164 @@ def run_retail_enrichment(
         ms = int((time.time() - t0) * 1000)
         _step("retail_shopping", "fail", ms, str(e))
 
-    # ===== STEP R1: Distributors =====
-    channels_attempted += 1
-    t0 = time.time()
-    try:
-        cached = cache_get(domain, "retail_distributors") if (domain and not skip_cache) else None
-        if cached and cached.get("success"):
-            dist_data = cached["data"]
-            ms = int((time.time() - t0) * 1000)
-        else:
-            from retail.detect_distributors import detect_distributors
-            dist_result = detect_distributors(html, domain, brand_name, geography)
-            ms = int((time.time() - t0) * 1000)
-            dist_data = dist_result.get("data", {}) if dist_result.get("success") else {}
-            if domain and dist_data:
-                cache_set(domain, "retail_distributors", dist_data)
+    # ===== STEPS R1-R4: Run in parallel =====
+    _counter_lock = threading.Lock()
 
-        if dist_data.get("has_distributors") is not None:
-            data["has_distributors"] = dist_data["has_distributors"]
-            status = "ok" if dist_data["has_distributors"] else "ok"
-            _step("retail_distributors", status, ms,
-                  f"{'Yes' if dist_data['has_distributors'] else 'No'} — {dist_data.get('evidence', '')[:100]}")
-            channels_succeeded += 1
-        else:
-            _step("retail_distributors", "warn", ms, "no data")
-    except Exception as e:
-        ms = int((time.time() - t0) * 1000)
-        _step("retail_distributors", "fail", ms, str(e))
+    def _inc(field):
+        nonlocal channels_attempted, channels_succeeded
+        with _counter_lock:
+            if field == "attempted":
+                channels_attempted += 1
+            else:
+                channels_succeeded += 1
 
-    # ===== STEP R2: Own Stores =====
-    channels_attempted += 1
-    t0 = time.time()
-    try:
-        cached = cache_get(domain, "retail_own_stores") if (domain and not skip_cache) else None
-        if cached and cached.get("success"):
-            stores_data = cached["data"]
-            ms = int((time.time() - t0) * 1000)
-        else:
-            from retail.detect_own_stores import detect_own_stores
-            stores_result = detect_own_stores(
-                html, domain, brand_name, geography,
-                ig_bio=ig_bio, knowledge_graph=knowledge_graph,
-            )
-            ms = int((time.time() - t0) * 1000)
-            stores_data = stores_result.get("data", {}) if stores_result.get("success") else {}
-            if domain and stores_data:
-                cache_set(domain, "retail_own_stores", stores_data)
+    def _run_distributors():
+        _inc("attempted")
+        t0r = time.time()
+        try:
+            cached = cache_get(domain, "retail_distributors") if (domain and not skip_cache) else None
+            if cached and cached.get("success"):
+                dist_data = cached["data"]
+                ms = int((time.time() - t0r) * 1000)
+            else:
+                from retail.detect_distributors import detect_distributors
+                dist_result = detect_distributors(html, domain, brand_name, geography)
+                ms = int((time.time() - t0r) * 1000)
+                dist_data = dist_result.get("data", {}) if dist_result.get("success") else {}
+                if domain and dist_data:
+                    cache_set(domain, "retail_distributors", dist_data)
 
-        if stores_data.get("has_own_stores") is not None:
-            data["has_own_stores"] = stores_data["has_own_stores"]
-            data["own_store_count_col"] = stores_data.get("own_store_count_col")
-            data["own_store_count_mex"] = stores_data.get("own_store_count_mex")
-            col = stores_data.get("own_store_count_col") or 0
-            mex = stores_data.get("own_store_count_mex") or 0
-            _step("retail_own_stores", "ok", ms,
-                  f"{'Yes' if stores_data['has_own_stores'] else 'No'} — COL:{col} MEX:{mex}")
-            channels_succeeded += 1
-        else:
-            _step("retail_own_stores", "warn", ms, "no data")
-    except Exception as e:
-        ms = int((time.time() - t0) * 1000)
-        _step("retail_own_stores", "fail", ms, str(e))
+            if dist_data.get("has_distributors") is not None:
+                data["has_distributors"] = dist_data["has_distributors"]
+                _step("retail_distributors", "ok", ms,
+                      f"{'Yes' if dist_data['has_distributors'] else 'No'} — {dist_data.get('evidence', '')[:100]}")
+                _inc("succeeded")
+            else:
+                _step("retail_distributors", "warn", ms, "no data")
+        except Exception as e:
+            ms = int((time.time() - t0r) * 1000)
+            _step("retail_distributors", "fail", ms, str(e))
 
-    # ===== STEP R3: Multi-brand Stores =====
-    channels_attempted += 1
-    t0 = time.time()
-    try:
-        cached = cache_get(domain, "retail_multibrand") if (domain and not skip_cache) else None
-        if cached and cached.get("success"):
-            mb_data = cached["data"]
-            ms = int((time.time() - t0) * 1000)
-        else:
-            from retail.detect_multibrand_stores import detect_multibrand_stores
-            # Try to get Supabase client for DB lookups
-            sb_client = None
-            try:
-                from export.supabase_writer import get_client
-                sb_client = get_client()
-            except Exception:
-                pass
+    def _run_own_stores():
+        _inc("attempted")
+        t0r = time.time()
+        try:
+            cached = cache_get(domain, "retail_own_stores") if (domain and not skip_cache) else None
+            if cached and cached.get("success"):
+                stores_data = cached["data"]
+                ms = int((time.time() - t0r) * 1000)
+            else:
+                from retail.detect_own_stores import detect_own_stores
+                stores_result = detect_own_stores(
+                    html, domain, brand_name, geography,
+                    ig_bio=ig_bio, knowledge_graph=knowledge_graph,
+                )
+                ms = int((time.time() - t0r) * 1000)
+                stores_data = stores_result.get("data", {}) if stores_result.get("success") else {}
+                if domain and stores_data:
+                    cache_set(domain, "retail_own_stores", stores_data)
 
-            mb_result = detect_multibrand_stores(
-                html, domain, brand_name, geography,
-                ig_bio=ig_bio, supabase_client=sb_client,
-                ig_username=ig_username, apollo_name=apollo_name,
-                shopping_sellers=shopping_multibrand,
-            )
-            ms = int((time.time() - t0) * 1000)
-            mb_data = mb_result.get("data", {}) if mb_result.get("success") else {}
-            if domain and mb_data:
-                cache_set(domain, "retail_multibrand", mb_data)
+            if stores_data.get("has_own_stores") is not None:
+                data["has_own_stores"] = stores_data["has_own_stores"]
+                data["own_store_count_col"] = stores_data.get("own_store_count_col")
+                data["own_store_count_mex"] = stores_data.get("own_store_count_mex")
+                col = stores_data.get("own_store_count_col") or 0
+                mex = stores_data.get("own_store_count_mex") or 0
+                _step("retail_own_stores", "ok", ms,
+                      f"{'Yes' if stores_data['has_own_stores'] else 'No'} — COL:{col} MEX:{mex}")
+                _inc("succeeded")
+            else:
+                _step("retail_own_stores", "warn", ms, "no data")
+        except Exception as e:
+            ms = int((time.time() - t0r) * 1000)
+            _step("retail_own_stores", "fail", ms, str(e))
 
-        if mb_data.get("has_multibrand_stores") is not None:
-            data["has_multibrand_stores"] = mb_data["has_multibrand_stores"]
-            data["multibrand_store_names"] = mb_data.get("multibrand_store_names", [])
-            stores_str = ", ".join(data["multibrand_store_names"][:5]) if data["multibrand_store_names"] else "none"
-            _step("retail_multibrand", "ok", ms,
-                  f"{'Yes' if mb_data['has_multibrand_stores'] else 'No'} — {stores_str}")
-            channels_succeeded += 1
-        else:
-            _step("retail_multibrand", "warn", ms, "no data")
-    except Exception as e:
-        ms = int((time.time() - t0) * 1000)
-        _step("retail_multibrand", "fail", ms, str(e))
+    def _run_multibrand():
+        _inc("attempted")
+        t0r = time.time()
+        try:
+            cached = cache_get(domain, "retail_multibrand") if (domain and not skip_cache) else None
+            if cached and cached.get("success"):
+                mb_data = cached["data"]
+                ms = int((time.time() - t0r) * 1000)
+            else:
+                from retail.detect_multibrand_stores import detect_multibrand_stores
+                sb_client = None
+                try:
+                    from export.supabase_writer import get_client
+                    sb_client = get_client()
+                except Exception:
+                    pass
 
-    # ===== STEP R4: Marketplaces =====
-    channels_attempted += 1
-    t0 = time.time()
-    try:
-        cached = cache_get(domain, "retail_marketplaces") if (domain and not skip_cache) else None
-        if cached and cached.get("success"):
-            mp_data = cached["data"]
-            ms = int((time.time() - t0) * 1000)
-        else:
-            from retail.detect_marketplaces import detect_marketplaces
-            mp_result = detect_marketplaces(
-                html, domain, brand_name, geography, category=category,
-                shopping_marketplaces=shopping_marketplaces,
-                tiktok_profile_data=tiktok_profile_data,
-            )
-            ms = int((time.time() - t0) * 1000)
-            mp_data = mp_result.get("data", {}) if mp_result.get("success") else {}
-            if domain and mp_data:
-                cache_set(domain, "retail_marketplaces", mp_data)
+                mb_result = detect_multibrand_stores(
+                    html, domain, brand_name, geography,
+                    ig_bio=ig_bio, supabase_client=sb_client,
+                    ig_username=ig_username, apollo_name=apollo_name,
+                    shopping_sellers=shopping_multibrand,
+                )
+                ms = int((time.time() - t0r) * 1000)
+                mb_data = mb_result.get("data", {}) if mb_result.get("success") else {}
+                if domain and mb_data:
+                    cache_set(domain, "retail_multibrand", mb_data)
 
-        # Copy all on_* keys from marketplace detection result
-        mp_keys_found = [k for k in mp_data if k.startswith("on_")]
-        if mp_keys_found:
-            parts = []
-            for k in mp_keys_found:
-                data[k] = mp_data[k]
-                if mp_data[k]:
-                    parts.append(k.replace("on_", "").upper())
-            _step("retail_marketplaces", "ok", ms,
-                  f"Present: {', '.join(parts) if parts else 'none'}")
-            channels_succeeded += 1
-        else:
-            _step("retail_marketplaces", "warn", ms, "no data")
-    except Exception as e:
-        ms = int((time.time() - t0) * 1000)
-        _step("retail_marketplaces", "fail", ms, str(e))
+            if mb_data.get("has_multibrand_stores") is not None:
+                data["has_multibrand_stores"] = mb_data["has_multibrand_stores"]
+                data["multibrand_store_names"] = mb_data.get("multibrand_store_names", [])
+                stores_str = ", ".join(data["multibrand_store_names"][:5]) if data["multibrand_store_names"] else "none"
+                _step("retail_multibrand", "ok", ms,
+                      f"{'Yes' if mb_data['has_multibrand_stores'] else 'No'} — {stores_str}")
+                _inc("succeeded")
+            else:
+                _step("retail_multibrand", "warn", ms, "no data")
+        except Exception as e:
+            ms = int((time.time() - t0r) * 1000)
+            _step("retail_multibrand", "fail", ms, str(e))
+
+    def _run_marketplaces():
+        _inc("attempted")
+        t0r = time.time()
+        try:
+            cached = cache_get(domain, "retail_marketplaces") if (domain and not skip_cache) else None
+            if cached and cached.get("success"):
+                mp_data_local = cached["data"]
+                ms = int((time.time() - t0r) * 1000)
+            else:
+                from retail.detect_marketplaces import detect_marketplaces
+                mp_result = detect_marketplaces(
+                    html, domain, brand_name, geography, category=category,
+                    shopping_marketplaces=shopping_marketplaces,
+                    tiktok_profile_data=tiktok_profile_data,
+                )
+                ms = int((time.time() - t0r) * 1000)
+                mp_data_local = mp_result.get("data", {}) if mp_result.get("success") else {}
+                if domain and mp_data_local:
+                    cache_set(domain, "retail_marketplaces", mp_data_local)
+
+            mp_keys_found = [k for k in mp_data_local if k.startswith("on_")]
+            if mp_keys_found:
+                parts = []
+                for k in mp_keys_found:
+                    data[k] = mp_data_local[k]
+                    if mp_data_local[k]:
+                        parts.append(k.replace("on_", "").upper())
+                _step("retail_marketplaces", "ok", ms,
+                      f"Present: {', '.join(parts) if parts else 'none'}")
+                _inc("succeeded")
+            else:
+                _step("retail_marketplaces", "warn", ms, "no data")
+        except Exception as e:
+            ms = int((time.time() - t0r) * 1000)
+            _step("retail_marketplaces", "fail", ms, str(e))
+
+    with ThreadPoolExecutor(max_workers=4, thread_name_prefix="retail") as pool:
+        futures = [
+            pool.submit(_run_distributors),
+            pool.submit(_run_own_stores),
+            pool.submit(_run_multibrand),
+            pool.submit(_run_marketplaces),
+        ]
+        for f in futures:
+            f.result()  # wait for all, exceptions handled inside each task
 
     # ===== Build marketplace_names from all sources =====
     from retail.detect_marketplaces import _marketplace_label

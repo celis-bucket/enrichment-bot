@@ -12,6 +12,8 @@ import sys
 import re
 import time
 import json
+import threading
+from concurrent.futures import ThreadPoolExecutor
 from typing import Optional, List, Dict, Any, Callable
 
 # Allow imports from tools/ root
@@ -148,26 +150,62 @@ def run_enrichment(
         result.geography = country.upper()
         result.geography_confidence = 1.0
 
-    # Intermediate data shared between steps
-    html = None
-    headers = {}
-    domain = None
-    instagram_data = None
-    catalog_data = None
-    meta_info = {}
+    # Thread-safe helpers
+    _step_lock = threading.Lock()
+    _counter_lock = threading.Lock()
 
     def _step(name: str, status: str, duration_ms: int, detail: str = ""):
-        steps.append({
-            "step": name,
-            "status": status,
-            "duration_ms": duration_ms,
-            "detail": detail,
-        })
+        with _step_lock:
+            steps.append({
+                "step": name,
+                "status": status,
+                "duration_ms": duration_ms,
+                "detail": detail,
+            })
         if on_step:
             try:
                 on_step(name, status, duration_ms, detail)
             except Exception:
                 pass  # never let callback errors break the pipeline
+
+    def _inc_attempted():
+        nonlocal tools_attempted
+        with _counter_lock:
+            tools_attempted += 1
+
+    def _inc_succeeded():
+        nonlocal tools_succeeded
+        with _counter_lock:
+            tools_succeeded += 1
+
+    # Intermediate data shared between steps (written behind Events)
+    html = None
+    headers = {}
+    domain = None
+    meta_info = {}
+
+    # Shared mutable containers for cross-task data
+    shared = {
+        "instagram_data": None,
+        "catalog_data": None,
+        "social_data": {},
+        "instagram_url": None,
+        "facebook_url": None,
+        "apollo_country": None,
+    }
+
+    # Synchronization events
+    platform_ready = threading.Event()
+    geo_ready = threading.Event()
+    social_ready = threading.Event()
+    ig_ready = threading.Event()
+    catalog_ready = threading.Event()
+    apollo_ready = threading.Event()
+    category_ready = threading.Event()
+
+    # ================================================================
+    # PHASE 0: Sequential gateway (resolve → normalize → scrape)
+    # ================================================================
 
     # ===== STEP 0: Resolve brand URL =====
     t0 = time.time()
@@ -204,7 +242,6 @@ def run_enrichment(
             result.domain = domain
             _step("normalize", "ok", ms, result.clean_url)
         else:
-            # Use resolved URL as fallback
             result.clean_url = resolved_url
             domain = resolved_url.replace("https://", "").replace("http://", "").split("/")[0].lower()
             result.domain = domain
@@ -217,17 +254,16 @@ def run_enrichment(
         _step("normalize", "warn", ms, str(e))
 
     # ===== STEP 2: Scrape website =====
-    tools_attempted += 1
+    _inc_attempted()
     t0 = time.time()
     try:
-        # Check cache first
         cache_hit = cache_get(domain, "web_scraper") if (domain and not skip_cache) else None
         if cache_hit and cache_hit.get("success"):
             html = cache_hit["data"].get("html", "")
             headers = cache_hit["data"].get("headers", {})
             ms = int((time.time() - t0) * 1000)
             _step("scrape", "ok", ms, f"cached, {len(html) // 1024}KB")
-            tools_succeeded += 1
+            _inc_succeeded()
         else:
             scrape_result = scrape_website(result.clean_url, timeout=60)
             ms = int((time.time() - t0) * 1000)
@@ -235,8 +271,7 @@ def run_enrichment(
                 html = scrape_result["data"]["html"]
                 headers = scrape_result["data"].get("headers", {})
                 _step("scrape", "ok", ms, f"{len(html) // 1024}KB")
-                tools_succeeded += 1
-                # Cache the scrape (store html truncated to 500KB for cache)
+                _inc_succeeded()
                 if domain:
                     cache_set(domain, "web_scraper", {
                         "html": html[:500_000],
@@ -248,22 +283,38 @@ def run_enrichment(
         ms = int((time.time() - t0) * 1000)
         _step("scrape", "fail", ms, str(e))
 
-    # Extract meta info from HTML (for category classification later)
+    # Extract meta info from HTML (instant, before parallelism)
     if html:
         meta_info = _extract_meta_from_html(html)
 
-    # ===== STEP 3: Detect platform =====
-    if html:
-        tools_attempted += 1
-        t0 = time.time()
+    # If no HTML, set all events to unblock any waiting tasks, then skip to finalize
+    if not html:
+        for evt in [platform_ready, geo_ready, social_ready, ig_ready, catalog_ready, apollo_ready, category_ready]:
+            evt.set()
+        result.enrichment_type = "full"
+        result.tool_coverage_pct = round(tools_succeeded / max(tools_attempted, 1), 2)
+        result.total_runtime_sec = round(time.time() - start_time, 2)
+        result.cost_estimate_usd = COST_PER_COMPANY_USD
+        result.workflow_execution_log = json.dumps(steps)
+        return result
+
+    # ================================================================
+    # PHASE 1+2: Parallel wave — all tasks launched concurrently,
+    # coordinated via threading.Event barriers
+    # ================================================================
+
+    def task_platform():
+        """Step 3: Detect e-commerce platform from HTML."""
+        _inc_attempted()
+        t0p = time.time()
         try:
             cached = cache_get(domain, "detect_platform") if (domain and not skip_cache) else None
             if cached and cached.get("success"):
                 pd = cached["data"]
-                ms = int((time.time() - t0) * 1000)
+                ms = int((time.time() - t0p) * 1000)
             else:
                 platform_result = detect_platform_from_html(html, result.clean_url, headers)
-                ms = int((time.time() - t0) * 1000)
+                ms = int((time.time() - t0p) * 1000)
                 pd = platform_result.get("data", {}) if platform_result.get("success") else {}
                 if domain and pd:
                     cache_set(domain, "detect_platform", pd)
@@ -272,30 +323,34 @@ def run_enrichment(
                 result.platform = pd["platform"]
                 result.platform_confidence = pd.get("confidence", 0)
                 _step("platform", "ok", ms, f"{pd['platform']} ({pd.get('confidence', 0):.2f})")
-                tools_succeeded += 1
+                _inc_succeeded()
             else:
                 _step("platform", "warn", ms, "no platform detected")
         except Exception as e:
-            ms = int((time.time() - t0) * 1000)
+            ms = int((time.time() - t0p) * 1000)
             _step("platform", "fail", ms, str(e))
+        finally:
+            platform_ready.set()
 
-    # ===== STEP 4: Detect geography =====
-    # If geography was locked by user input, skip auto-detection (just validate)
-    if result.geography and result.geography_confidence == 1.0:
-        _step("geography", "ok", 0, f"{result.geography} (user-provided)")
-        tools_attempted += 1
-        tools_succeeded += 1
-    elif html:
-        tools_attempted += 1
-        t0 = time.time()
+    def task_geography():
+        """Step 4: Detect geography from HTML."""
+        if result.geography and result.geography_confidence == 1.0:
+            _step("geography", "ok", 0, f"{result.geography} (user-provided)")
+            _inc_attempted()
+            _inc_succeeded()
+            geo_ready.set()
+            return
+
+        _inc_attempted()
+        t0g = time.time()
         try:
             cached = cache_get(domain, "detect_geography") if (domain and not skip_cache) else None
             if cached and cached.get("success"):
                 gd = cached["data"]
-                ms = int((time.time() - t0) * 1000)
+                ms = int((time.time() - t0g) * 1000)
             else:
                 geo_result = detect_geography_from_html(html, result.clean_url)
-                ms = int((time.time() - t0) * 1000)
+                ms = int((time.time() - t0g) * 1000)
                 gd = geo_result.get("data", {}) if geo_result.get("success") else {}
                 if domain and gd:
                     cache_set(domain, "detect_geography", gd)
@@ -304,44 +359,50 @@ def run_enrichment(
                 result.geography = gd["primary_country"]
                 result.geography_confidence = gd.get("confidence", 0)
                 _step("geography", "ok", ms, f"{gd['primary_country']} ({gd.get('confidence', 0):.2f})")
-                tools_succeeded += 1
+                _inc_succeeded()
             else:
                 result.geography = "UNKNOWN"
                 _step("geography", "warn", ms, "no geography detected")
         except Exception as e:
-            ms = int((time.time() - t0) * 1000)
+            ms = int((time.time() - t0g) * 1000)
             _step("geography", "fail", ms, str(e))
+        finally:
+            geo_ready.set()
 
-    # ===== STEP 5: Extract social links =====
-    instagram_url = None
-    facebook_url = None
-    social_data = {}
-    if html:
-        tools_attempted += 1
-        t0 = time.time()
+    def task_social():
+        """Step 5: Extract social links from HTML + fallbacks."""
+        _inc_attempted()
+        t0s = time.time()
         try:
             cached = cache_get(domain, "social_links") if (domain and not skip_cache) else None
             if cached and cached.get("success"):
-                social_data = cached["data"]
-                ms = int((time.time() - t0) * 1000)
+                sd = cached["data"]
+                ms = int((time.time() - t0s) * 1000)
             else:
                 social_result = extract_social_links_from_html(html, result.clean_url)
-                ms = int((time.time() - t0) * 1000)
-                social_data = social_result.get("data", {}) if social_result.get("success") else {}
-                if domain and social_data:
-                    cache_set(domain, "social_links", social_data)
+                ms = int((time.time() - t0s) * 1000)
+                sd = social_result.get("data", {}) if social_result.get("success") else {}
+                if domain and sd:
+                    cache_set(domain, "social_links", sd)
 
-            instagram_url = social_data.get("instagram")
-            facebook_url = social_data.get("facebook")
-            if instagram_url:
-                result.instagram_url = instagram_url
-                platforms_found = [k for k, v in social_data.items() if v]
+            shared["social_data"] = sd
+            instagram_url_local = sd.get("instagram")
+            facebook_url_local = sd.get("facebook")
+
+            if instagram_url_local:
+                shared["instagram_url"] = instagram_url_local
+                shared["facebook_url"] = facebook_url_local
+                result.instagram_url = instagram_url_local
+                platforms_found = [k for k, v in sd.items() if v]
                 _step("social_links", "ok", ms, f"IG found + {len(platforms_found)} platforms")
-                tools_succeeded += 1
+                _inc_succeeded()
             else:
-                _step("social_links", "warn", ms, "no Instagram in HTML, trying alternate domain...")
+                _step("social_links", "warn", ms, "no Instagram in HTML, trying fallbacks...")
 
-                # Fallback 1: Try alternate country domain (handles geo-redirect sites)
+                # Wait for geography (needed for alt-domain fallback)
+                geo_ready.wait(timeout=30)
+
+                # Fallback 1: Try alternate country domain
                 alt_social_found = False
                 if result.geography and result.geography != "UNKNOWN" and domain:
                     COUNTRY_TLDS = {
@@ -353,36 +414,37 @@ def run_enrichment(
                     }
                     country_tld = COUNTRY_TLDS.get(result.geography)
                     if country_tld and not domain.endswith(country_tld):
-                        brand_name = _extract_brand_from_meta_title(meta_info.get("meta_title"), domain)
+                        brand_name_local = _extract_brand_from_meta_title(meta_info.get("meta_title"), domain)
                         domain_slug = _extract_brand_name(domain)
-                        # Build candidate domains: brand name (no spaces) + TLD, then domain slug + TLD
                         candidates = []
-                        if brand_name:
-                            brand_slug = re.sub(r'[^a-z0-9]', '', brand_name.lower())
+                        if brand_name_local:
+                            brand_slug = re.sub(r'[^a-z0-9]', '', brand_name_local.lower())
                             if brand_slug != domain_slug:
                                 candidates.append(f"{brand_slug}{country_tld}")
                         candidates.append(f"{domain_slug}{country_tld}")
 
                         t0_alt = time.time()
-                        for alt_domain in candidates:
+                        for alt_domain_name in candidates:
                             try:
-                                alt_result = scrape_website(f"https://{alt_domain}/", timeout=8, max_retries=1)
+                                alt_result = scrape_website(f"https://{alt_domain_name}/", timeout=8, max_retries=1)
                                 if alt_result["success"]:
                                     alt_social = extract_social_links_from_html(
-                                        alt_result["data"]["html"], f"https://{alt_domain}/"
+                                        alt_result["data"]["html"], f"https://{alt_domain_name}/"
                                     )
                                     alt_data = alt_social.get("data", {}) if alt_social.get("success") else {}
                                     if alt_data.get("instagram") or alt_data.get("facebook") or alt_data.get("tiktok"):
-                                        social_data = alt_data
-                                        instagram_url = alt_data.get("instagram")
-                                        facebook_url = alt_data.get("facebook")
-                                        if instagram_url:
-                                            result.instagram_url = instagram_url
+                                        shared["social_data"] = alt_data
+                                        instagram_url_local = alt_data.get("instagram")
+                                        facebook_url_local = alt_data.get("facebook")
+                                        if instagram_url_local:
+                                            shared["instagram_url"] = instagram_url_local
+                                            result.instagram_url = instagram_url_local
+                                        shared["facebook_url"] = facebook_url_local
                                         ms_alt = int((time.time() - t0_alt) * 1000)
                                         platforms_found = [k for k, v in alt_data.items() if v]
                                         _step("social_links_alt", "ok", ms_alt,
-                                              f"found via {alt_domain}: {len(platforms_found)} platforms")
-                                        tools_succeeded += 1
+                                              f"found via {alt_domain_name}: {len(platforms_found)} platforms")
+                                        _inc_succeeded()
                                         alt_social_found = True
                                         break
                             except Exception:
@@ -392,51 +454,62 @@ def run_enrichment(
                             _step("social_links_alt", "warn", ms_alt, "no alternate domain resolved")
 
                 # Fallback 2: search for Instagram via Serper
-                if not instagram_url:
+                if not instagram_url_local:
                     t0_serper = time.time()
                     try:
-                        brand_name = _extract_brand_from_meta_title(meta_info.get("meta_title"), domain)
-                        if brand_name or domain:
-                            ig_from_serper = search_instagram_via_serper(brand_name or "", domain=domain)
+                        brand_name_local = _extract_brand_from_meta_title(meta_info.get("meta_title"), domain)
+                        if brand_name_local or domain:
+                            ig_from_serper = search_instagram_via_serper(brand_name_local or "", domain=domain)
                             ms_serper = int((time.time() - t0_serper) * 1000)
                             if ig_from_serper:
-                                instagram_url = ig_from_serper
-                                result.instagram_url = instagram_url
+                                instagram_url_local = ig_from_serper
+                                shared["instagram_url"] = instagram_url_local
+                                result.instagram_url = instagram_url_local
                                 _step("social_links_serper", "ok", ms_serper, f"IG found via Serper: {ig_from_serper}")
                                 if not alt_social_found:
-                                    tools_succeeded += 1
+                                    _inc_succeeded()
                             else:
-                                _step("social_links_serper", "warn", ms_serper, f"no IG found for '{brand_name}'")
+                                _step("social_links_serper", "warn", ms_serper, f"no IG found for '{brand_name_local}'")
                     except Exception as e_serper:
                         ms_serper = int((time.time() - t0_serper) * 1000)
                         _step("social_links_serper", "fail", ms_serper, str(e_serper))
-        except Exception as e:
-            ms = int((time.time() - t0) * 1000)
-            _step("social_links", "fail", ms, str(e))
 
-    # ===== STEP 6: Instagram metrics =====
-    if instagram_url:
-        tools_attempted += 1
-        t0 = time.time()
+            shared["facebook_url"] = facebook_url_local if 'facebook_url_local' in dir() else sd.get("facebook")
+        except Exception as e:
+            ms = int((time.time() - t0s) * 1000)
+            _step("social_links", "fail", ms, str(e))
+        finally:
+            social_ready.set()
+
+    def task_instagram():
+        """Step 6: Instagram metrics (waits for social_ready)."""
+        social_ready.wait(timeout=45)
+        instagram_url_local = shared.get("instagram_url")
+        if not instagram_url_local:
+            ig_ready.set()
+            return
+
+        _inc_attempted()
+        t0i = time.time()
         try:
             cached = cache_get(domain, "searchapi_instagram") if (domain and not skip_cache) else None
             if cached and cached.get("success"):
                 insta_data = cached["data"]
-                ms = int((time.time() - t0) * 1000)
+                ms = int((time.time() - t0i) * 1000)
             else:
-                username = extract_instagram_username(instagram_url)
+                username = extract_instagram_username(instagram_url_local)
                 if username:
                     insta_result = get_instagram_metrics(username, include_posts=True, posts_limit=20)
-                    ms = int((time.time() - t0) * 1000)
+                    ms = int((time.time() - t0i) * 1000)
                     insta_data = insta_result.get("data", {}) if insta_result.get("success") else {}
                     if domain and insta_data:
                         cache_set(domain, "searchapi_instagram", insta_data)
                 else:
                     insta_data = {}
-                    ms = int((time.time() - t0) * 1000)
+                    ms = int((time.time() - t0i) * 1000)
 
             if insta_data.get("followers") is not None:
-                instagram_data = insta_data
+                shared["instagram_data"] = insta_data
                 result.ig_followers = insta_data.get("followers")
                 result.ig_engagement_rate = insta_data.get("engagement_rate")
                 result.ig_is_verified = 1 if insta_data.get("is_verified") else 0
@@ -454,66 +527,73 @@ def run_enrichment(
                 _step("instagram", "ok", ms,
                       f"@{insta_data.get('username', '?')} {followers_str} followers, "
                       f"verified={result.ig_is_verified} size={result.ig_size_score} health={result.ig_health_score}")
-                tools_succeeded += 1
+                _inc_succeeded()
             else:
                 _step("instagram", "warn", ms, "no follower data")
         except Exception as e:
-            ms = int((time.time() - t0) * 1000)
+            ms = int((time.time() - t0i) * 1000)
             _step("instagram", "fail", ms, str(e))
+        finally:
+            ig_ready.set()
 
-    # ===== STEP 6b: META Ads (Ad Library) =====
-    # Search for Facebook page via Serper if not found in HTML
-    fb_page_name = None
-    if not facebook_url:
-        try:
-            brand_name = _extract_brand_from_meta_title(meta_info.get("meta_title"), domain)
-            if brand_name or domain:
-                fb_serper = search_facebook_via_serper(brand_name or "", domain=domain)
-                if fb_serper:
-                    facebook_url = fb_serper["url"]
-                    fb_page_name = fb_serper["page_name"]
-        except Exception:
-            pass
+    def task_meta_ads():
+        """Step 6b: META Ads (waits for social_ready + ig_ready)."""
+        social_ready.wait(timeout=45)
+        ig_ready.wait(timeout=45)
 
-    # Try SearchAPI Facebook Business Page for more reliable page name + page_id
-    fb_page_id = None
-    if facebook_url:
-        try:
-            from social.apify_meta_ads import _extract_facebook_username
-            fb_username = _extract_facebook_username(facebook_url)
-            if fb_username:
-                fb_page_info = searchapi_facebook_page(fb_username)
-                if fb_page_info:
-                    if fb_page_info.get("page_name") and not fb_page_name:
-                        fb_page_name = fb_page_info["page_name"]
-                    if fb_page_info.get("page_id"):
-                        fb_page_id = str(fb_page_info["page_id"])
-        except Exception:
-            pass
+        facebook_url_local = shared.get("facebook_url")
+        instagram_data_local = shared.get("instagram_data")
 
-    # Build search terms for Meta Ad Library (multi-search strategy):
-    # When page_id is available, it filters to the exact Facebook page (most accurate).
-    # Without page_id, picks the lowest non-zero count to avoid keyword noise.
-    ig_full_name = instagram_data.get("full_name") if instagram_data else None
-    ig_username = instagram_data.get("username") if instagram_data else None
-    search_terms = [fb_page_name, ig_full_name, ig_username]
-    search_terms = [t for t in search_terms if t]  # filter None/empty
+        # Search for Facebook page via Serper if not found in HTML
+        fb_page_name = None
+        if not facebook_url_local:
+            try:
+                brand_name_local = _extract_brand_from_meta_title(meta_info.get("meta_title"), domain)
+                if brand_name_local or domain:
+                    fb_serper = search_facebook_via_serper(brand_name_local or "", domain=domain)
+                    if fb_serper:
+                        facebook_url_local = fb_serper["url"]
+                        fb_page_name = fb_serper["page_name"]
+            except Exception:
+                pass
 
-    if search_terms:
-        tools_attempted += 1
-        t0 = time.time()
+        # Try SearchAPI Facebook Business Page for page_id
+        fb_page_id = None
+        if facebook_url_local:
+            try:
+                from social.apify_meta_ads import _extract_facebook_username
+                fb_username = _extract_facebook_username(facebook_url_local)
+                if fb_username:
+                    fb_page_info = searchapi_facebook_page(fb_username)
+                    if fb_page_info:
+                        if fb_page_info.get("page_name") and not fb_page_name:
+                            fb_page_name = fb_page_info["page_name"]
+                        if fb_page_info.get("page_id"):
+                            fb_page_id = str(fb_page_info["page_id"])
+            except Exception:
+                pass
+
+        ig_full_name = instagram_data_local.get("full_name") if instagram_data_local else None
+        ig_username_local = instagram_data_local.get("username") if instagram_data_local else None
+        search_terms = [fb_page_name, ig_full_name, ig_username_local]
+        search_terms = [t for t in search_terms if t]
+
+        if not search_terms:
+            return
+
+        _inc_attempted()
+        t0m = time.time()
         _step("meta_ads", "running", 0, f"multi-search: {search_terms}" + (f" (page_id: {fb_page_id})" if fb_page_id else ""))
         try:
             cached = cache_get(domain, "meta_ads") if (domain and not skip_cache) else None
             if cached and cached.get("success"):
                 ma = cached["data"]
-                ms = int((time.time() - t0) * 1000)
+                ms = int((time.time() - t0m) * 1000)
             else:
-                # Map geography codes: COL→CO, MEX→MX
                 geo_map = {"COL": "CO", "MEX": "MX"}
                 ad_country = geo_map.get(result.geography, "CO")
                 meta_ads_result = get_meta_ads_multi_search(search_terms, country=ad_country, facebook_page_id=fb_page_id)
-                ms = int((time.time() - t0) * 1000)
+                ms = int((time.time() - t0m) * 1000)
                 ma = meta_ads_result.get("data", {}) if meta_ads_result.get("success") else {}
                 if domain and ma:
                     cache_set(domain, "meta_ads", ma)
@@ -522,46 +602,45 @@ def run_enrichment(
                 result.meta_active_ads_count = ma["active_ads_count"]
                 search_used = ma.get("search_term", "?")
                 _step("meta_ads", "ok", ms, f"{ma['active_ads_count']} active ads (term: {search_used})")
-                tools_succeeded += 1
+                _inc_succeeded()
             else:
                 _step("meta_ads", "warn", ms, "no META ads data")
         except Exception as e:
-            ms = int((time.time() - t0) * 1000)
+            ms = int((time.time() - t0m) * 1000)
             _step("meta_ads", "fail", ms, str(e))
 
-    # ===== STEP 6c: Facebook & TikTok followers (SearchAPI) =====
-    ig_username = instagram_data.get("username") if instagram_data else None
-    brand_name_for_social = ig_username or _extract_brand_from_meta_title(meta_info.get("meta_title"), domain)
+    def task_fb_followers():
+        """Step 6c-FB: Facebook followers (waits for social_ready)."""
+        social_ready.wait(timeout=45)
 
-    # Extract Facebook username from the URL found in HTML (more reliable than brand search)
-    fb_search_name = brand_name_for_social
-    if facebook_url:
-        import re as _re
-        _fb_match = _re.search(r'facebook\.com/(?:p/|pages/[^/]+/)?([a-zA-Z0-9._-]+)', facebook_url)
-        if _fb_match:
-            fb_search_name = _fb_match.group(1)
+        instagram_data_local = None
+        # Wait briefly for IG to get username for fallback
+        ig_ready.wait(timeout=30)
+        instagram_data_local = shared.get("instagram_data")
 
-    # Extract TikTok username from the URL found in HTML
-    tiktok_url = social_data.get("tiktok") if social_data else None
-    tiktok_username = brand_name_for_social
-    if tiktok_url:
-        import re as _re
-        _tt_match = _re.search(r'tiktok\.com/@?([a-zA-Z0-9_.]+)', tiktok_url)
-        if _tt_match:
-            tiktok_username = _tt_match.group(1)
+        ig_username_local = instagram_data_local.get("username") if instagram_data_local else None
+        brand_name_for_social = ig_username_local or _extract_brand_from_meta_title(meta_info.get("meta_title"), domain)
 
-    if fb_search_name:
-        # Facebook followers
-        tools_attempted += 1
-        t0 = time.time()
+        facebook_url_local = shared.get("facebook_url")
+        fb_search_name = brand_name_for_social
+        if facebook_url_local:
+            _fb_match = re.search(r'facebook\.com/(?:p/|pages/[^/]+/)?([a-zA-Z0-9._-]+)', facebook_url_local)
+            if _fb_match:
+                fb_search_name = _fb_match.group(1)
+
+        if not fb_search_name:
+            return
+
+        _inc_attempted()
+        t0f = time.time()
         try:
             cached = cache_get(domain, "searchapi_facebook") if (domain and not skip_cache) else None
             if cached and cached.get("success"):
                 fb_data = cached["data"]
-                ms = int((time.time() - t0) * 1000)
+                ms = int((time.time() - t0f) * 1000)
             else:
                 fb_data = searchapi_facebook_page(fb_search_name) or {}
-                ms = int((time.time() - t0) * 1000)
+                ms = int((time.time() - t0f) * 1000)
                 if domain and fb_data:
                     cache_set(domain, "searchapi_facebook", fb_data)
 
@@ -571,25 +650,45 @@ def run_enrichment(
             if fb_followers:
                 result.fb_followers = int(fb_followers)
                 _step("facebook", "ok", ms, f"{result.fb_followers} followers")
-                tools_succeeded += 1
+                _inc_succeeded()
             else:
                 result.fb_followers = 0
                 _step("facebook", "warn", ms, f"no page found (searched: {fb_search_name})")
         except Exception as e:
-            ms = int((time.time() - t0) * 1000)
+            ms = int((time.time() - t0f) * 1000)
             _step("facebook", "fail", ms, str(e))
 
-    # TikTok enabled only for Mexico (not active in Colombia yet)
-    _skip_tiktok = (result.geography != "MEX")
-    if tiktok_username and not _skip_tiktok:
-        # TikTok followers
-        tools_attempted += 1
-        t0 = time.time()
+    def task_tiktok():
+        """Step 6c-TT: TikTok followers (waits for social_ready + geo_ready). MEX only."""
+        social_ready.wait(timeout=45)
+        geo_ready.wait(timeout=30)
+
+        if result.geography != "MEX":
+            return
+
+        social_data_local = shared.get("social_data", {})
+        ig_ready.wait(timeout=30)
+        instagram_data_local = shared.get("instagram_data")
+        ig_username_local = instagram_data_local.get("username") if instagram_data_local else None
+        brand_name_for_social = ig_username_local or _extract_brand_from_meta_title(meta_info.get("meta_title"), domain)
+
+        tiktok_url = social_data_local.get("tiktok")
+        tiktok_username = brand_name_for_social
+        if tiktok_url:
+            _tt_match = re.search(r'tiktok\.com/@?([a-zA-Z0-9_.]+)', tiktok_url)
+            if _tt_match:
+                tiktok_username = _tt_match.group(1)
+
+        if not tiktok_username:
+            return
+
+        _inc_attempted()
+        t0t = time.time()
         try:
             cached = cache_get(domain, "searchapi_tiktok") if (domain and not skip_cache) else None
             if cached and cached.get("success"):
                 tt_data = cached["data"]
-                ms = int((time.time() - t0) * 1000)
+                ms = int((time.time() - t0t) * 1000)
             else:
                 import requests as _requests
                 _searchapi_token = os.getenv("SEARCHAPI_API_KEY", "")
@@ -603,67 +702,73 @@ def run_enrichment(
                     )
                     if _resp.status_code == 200:
                         tt_data = _resp.json().get("profile", {})
-                ms = int((time.time() - t0) * 1000)
+                ms = int((time.time() - t0t) * 1000)
                 if domain and tt_data:
                     cache_set(domain, "searchapi_tiktok", tt_data)
 
             if tt_data.get("followers") is not None:
                 result.tiktok_followers = int(tt_data["followers"])
                 _step("tiktok", "ok", ms, f"{result.tiktok_followers} followers")
-                tools_succeeded += 1
+                _inc_succeeded()
             else:
                 result.tiktok_followers = 0
                 _step("tiktok", "warn", ms, f"no profile found (searched: {tiktok_username})")
         except Exception as e:
-            ms = int((time.time() - t0) * 1000)
+            ms = int((time.time() - t0t) * 1000)
             _step("tiktok", "fail", ms, str(e))
 
-    # ===== STEP 7: Product catalog =====
-    tools_attempted += 1
-    t0 = time.time()
-    try:
-        cached = cache_get(domain, "product_catalog") if (domain and not skip_cache) else None
-        if cached and cached.get("success"):
-            cd = cached["data"]
-            ms = int((time.time() - t0) * 1000)
-        else:
-            cat_result = scrape_product_catalog(result.clean_url, platform=result.platform)
-            ms = int((time.time() - t0) * 1000)
-            cd = cat_result.get("data", {}) if cat_result.get("success") else {}
-            if domain and cd:
-                cache_set(domain, "product_catalog", cd)
+    def task_catalog():
+        """Step 7: Product catalog (waits for platform_ready)."""
+        platform_ready.wait(timeout=30)
 
-        if cd.get("product_count", 0) > 0:
-            catalog_data = cd
-            result.product_count = cd["product_count"]
-            result.avg_price = cd.get("avg_price")
-            pr = cd.get("price_range", {})
-            result.price_range_min = pr.get("min")
-            result.price_range_max = pr.get("max")
-            result.currency = cd.get("currency")
-            _step("catalog", "ok", ms, f"{cd['product_count']} products, {cd.get('currency', '?')}")
-            tools_succeeded += 1
-        else:
-            _step("catalog", "warn", ms, "no products found")
-    except Exception as e:
-        ms = int((time.time() - t0) * 1000)
-        _step("catalog", "fail", ms, str(e))
+        _inc_attempted()
+        t0c = time.time()
+        try:
+            cached = cache_get(domain, "product_catalog") if (domain and not skip_cache) else None
+            if cached and cached.get("success"):
+                cd = cached["data"]
+                ms = int((time.time() - t0c) * 1000)
+            else:
+                cat_result = scrape_product_catalog(result.clean_url, platform=result.platform)
+                ms = int((time.time() - t0c) * 1000)
+                cd = cat_result.get("data", {}) if cat_result.get("success") else {}
+                if domain and cd:
+                    cache_set(domain, "product_catalog", cd)
 
-    # ===== STEP 8: Traffic estimation =====
-    if html:
-        tools_attempted += 1
-        t0 = time.time()
+            if cd.get("product_count", 0) > 0:
+                shared["catalog_data"] = cd
+                result.product_count = cd["product_count"]
+                result.avg_price = cd.get("avg_price")
+                pr = cd.get("price_range", {})
+                result.price_range_min = pr.get("min")
+                result.price_range_max = pr.get("max")
+                result.currency = cd.get("currency")
+                _step("catalog", "ok", ms, f"{cd['product_count']} products, {cd.get('currency', '?')}")
+                _inc_succeeded()
+            else:
+                _step("catalog", "warn", ms, "no products found")
+        except Exception as e:
+            ms = int((time.time() - t0c) * 1000)
+            _step("catalog", "fail", ms, str(e))
+        finally:
+            catalog_ready.set()
+
+    def task_traffic():
+        """Step 8: Traffic estimation (runs immediately with HTML, no IG wait)."""
+        _inc_attempted()
+        t0tr = time.time()
         try:
             cached = cache_get(domain, "traffic") if (domain and not skip_cache) else None
             if cached and cached.get("success"):
                 td = cached["data"]
-                ms = int((time.time() - t0) * 1000)
+                ms = int((time.time() - t0tr) * 1000)
             else:
                 social_for_traffic = {}
+                # Don't wait for IG — run immediately for speed
                 if result.ig_followers:
                     social_for_traffic["instagram_followers"] = result.ig_followers
                 traffic_result = estimate_traffic_from_html(html, result.clean_url, social_for_traffic)
-                ms = int((time.time() - t0) * 1000)
+                ms = int((time.time() - t0tr) * 1000)
                 td = traffic_result.get("data", {}) if traffic_result.get("success") else {}
                 if domain and td:
                     cache_set(domain, "traffic", td)
@@ -675,31 +780,36 @@ def run_enrichment(
                 result.signals_used = ", ".join(signals) if isinstance(signals, list) else str(signals)
                 visits_str = f"{td['estimated_monthly_visits']:,}"
                 _step("traffic", "ok", ms, f"{visits_str} visits/mo ({result.traffic_confidence:.2f})")
-                tools_succeeded += 1
+                _inc_succeeded()
             else:
                 _step("traffic", "warn", ms, "no traffic estimate")
         except Exception as e:
-            ms = int((time.time() - t0) * 1000)
+            ms = int((time.time() - t0tr) * 1000)
             _step("traffic", "fail", ms, str(e))
 
-    # ===== STEP 9: Google Demand =====
-    if enable_google_demand and domain:
-        tools_attempted += 1
-        t0 = time.time()
+    def task_google_demand():
+        """Step 9: Google Demand scoring (waits for geo_ready). Internally parallel."""
+        if not (enable_google_demand and domain):
+            return
+
+        geo_ready.wait(timeout=30)
+
+        _inc_attempted()
+        t0d = time.time()
         try:
             cached = cache_get(domain, "google_demand") if (domain and not skip_cache) else None
             if cached and cached.get("success"):
                 dd = cached["data"]
-                ms = int((time.time() - t0) * 1000)
+                ms = int((time.time() - t0d) * 1000)
             else:
-                brand_name = _extract_brand_name(domain)
+                brand_name_local = _extract_brand_name(domain)
                 country_code = None
                 if result.geography == "COL":
                     country_code = "co"
                 elif result.geography == "MEX":
                     country_code = "mx"
-                demand_result = score_google_demand(brand_name, domain, country=country_code)
-                ms = int((time.time() - t0) * 1000)
+                demand_result = score_google_demand(brand_name_local, domain, country=country_code)
+                ms = int((time.time() - t0d) * 1000)
                 dd = demand_result.get("data", {}) if demand_result.get("success") else {}
                 if domain and dd:
                     cache_set(domain, "google_demand", dd)
@@ -710,82 +820,31 @@ def run_enrichment(
                 result.google_confidence = dd.get("google_confidence")
                 _step("google_demand", "ok", ms,
                       f"brand={dd['brand_demand_score']:.2f} site={dd.get('site_serp_coverage_score', 0):.2f}")
-                tools_succeeded += 1
+                _inc_succeeded()
             else:
                 _step("google_demand", "warn", ms, "no demand data")
         except Exception as e:
-            ms = int((time.time() - t0) * 1000)
+            ms = int((time.time() - t0d) * 1000)
             _step("google_demand", "fail", ms, str(e))
 
-    # ===== STEP 10: Category classification (LLM) =====
-    tools_attempted += 1
-    t0 = time.time()
-    try:
-        cached = cache_get(domain, "classify_category") if (domain and not skip_cache) else None
-        if cached and cached.get("success"):
-            cat_data = cached["data"]
-            ms = int((time.time() - t0) * 1000)
-        else:
-            # Gather product titles for LLM
-            product_titles = None
-            if catalog_data and catalog_data.get("sample_products"):
-                product_titles = [
-                    p.get("name", p.get("title", ""))
-                    for p in catalog_data["sample_products"][:20]
-                    if p.get("name") or p.get("title")
-                ]
+    def task_apollo():
+        """Step 12: Apollo enrichment (independent, only needs domain)."""
+        if skip_apollo:
+            apollo_ready.set()
+            return
 
-            # Gather IG info
-            ig_bio = None
-            ig_name = None
-            if instagram_data:
-                ig_bio = instagram_data.get("biography")
-                ig_name = instagram_data.get("full_name")
-
-            cat_result = classify_category(
-                domain=domain or "",
-                meta_title=meta_info.get("meta_title"),
-                meta_description=meta_info.get("meta_description"),
-                h1_text=meta_info.get("h1_text"),
-                product_titles=product_titles,
-                ig_bio=ig_bio,
-                ig_name=ig_name,
-            )
-            ms = int((time.time() - t0) * 1000)
-            cat_data = cat_result.get("data", {}) if cat_result.get("success") else {}
-            if domain and cat_data.get("category"):
-                cache_set(domain, "classify_category", cat_data)
-
-        if cat_data.get("category"):
-            result.category = cat_data["category"]
-            result.category_confidence = cat_data.get("confidence", 0)
-            result.category_evidence = cat_data.get("evidence", "")
-            result.company_name = cat_data.get("company_name", "")
-            _step("category", "ok", ms, f"{cat_data['category']} ({cat_data.get('confidence', 0):.2f})")
-            tools_succeeded += 1
-        else:
-            _step("category", "warn", ms, cat_result.get("error", "no category") if 'cat_result' in dir() else "no category")
-    except Exception as e:
-        ms = int((time.time() - t0) * 1000)
-        _step("category", "fail", ms, str(e))
-
-    # ===== STEP 12: Apollo =====
-    apollo_country = None
-    if not skip_apollo:
-        t0 = time.time()
-        tools_attempted += 1
+        _inc_attempted()
+        t0a = time.time()
         try:
             apollo_result = apollo_enrich(domain)
-            ms = int((time.time() - t0) * 1000)
+            ms = int((time.time() - t0a) * 1000)
             if apollo_result.get("success") and apollo_result.get("data", {}).get("source") != "stub":
                 ap_data = apollo_result["data"]
-                # Company info
                 company_info = ap_data.get("company", {})
                 result.company_linkedin = company_info.get("linkedin_url", "")
                 result.number_employes = company_info.get("employee_count")
                 result.founded_year = company_info.get("founded_year")
-                apollo_country = company_info.get("country", "")
-                # All contacts
+                shared["apollo_country"] = company_info.get("country", "")
                 contacts = ap_data.get("contacts", [])
                 result.contacts_list = [
                     {
@@ -797,7 +856,6 @@ def run_enrichment(
                     }
                     for c in contacts
                 ]
-                # Best contact (first with email) — kept for Sheet + backwards compat
                 for c in contacts:
                     if c.get("email"):
                         result.contact_name = c.get("name", "")
@@ -806,76 +864,34 @@ def run_enrichment(
                 apollo_domain = ap_data.get("apollo_domain", domain)
                 via_suffix = f" (via {apollo_domain})" if apollo_domain != domain else ""
                 _step("apollo", "ok", ms, f"{len(contacts)} contacts, linkedin={'yes' if result.company_linkedin else 'no'}{via_suffix}")
-                tools_succeeded += 1
+                _inc_succeeded()
             else:
                 err = apollo_result.get("error", "no data")
                 _step("apollo", "warn", ms, err)
         except Exception as e:
-            ms = int((time.time() - t0) * 1000)
+            ms = int((time.time() - t0a) * 1000)
             _step("apollo", "fail", ms, str(e))
+        finally:
+            apollo_ready.set()
 
-    # ===== STEP 12b: Geography reconciliation =====
-    # Skip if geography was user-provided (confidence 1.0)
-    if result.geography in (None, "UNKNOWN") and result.geography_confidence != 1.0:
-        t0 = time.time()
-        geo_resolved = None
-        geo_source = ""
+    def task_hubspot():
+        """Step 13: HubSpot CRM lookup (waits for apollo_ready for contact_email)."""
+        if skip_hubspot or not domain:
+            return
 
-        COUNTRY_NORM = {
-            "colombia": "COL", "col": "COL",
-            "mexico": "MEX", "méxico": "MEX", "mex": "MEX",
-        }
+        apollo_ready.wait(timeout=45)
 
-        # Signal 1: explicit country parameter
-        if country and country.strip().lower() in COUNTRY_NORM:
-            geo_resolved = COUNTRY_NORM[country.strip().lower()]
-            geo_source = f"input param: {country}"
-
-        # Signal 2: Apollo company country
-        if not geo_resolved and apollo_country:
-            norm_key = apollo_country.strip().lower()
-            if norm_key in COUNTRY_NORM:
-                geo_resolved = COUNTRY_NORM[norm_key]
-                geo_source = f"apollo country: {apollo_country}"
-
-        # Signal 3: catalog currency
-        if not geo_resolved and result.currency:
-            CURRENCY_GEO = {"COP": "COL", "MXN": "MEX"}
-            if result.currency in CURRENCY_GEO:
-                geo_resolved = CURRENCY_GEO[result.currency]
-                geo_source = f"catalog currency: {result.currency}"
-
-        # Signal 4: domain TLD
-        if not geo_resolved and domain:
-            if domain.endswith(".co") or ".co." in domain:
-                geo_resolved = "COL"
-                geo_source = f"domain TLD: {domain}"
-            elif domain.endswith(".mx") or ".mx." in domain:
-                geo_resolved = "MEX"
-                geo_source = f"domain TLD: {domain}"
-
-        ms = int((time.time() - t0) * 1000)
-        if geo_resolved:
-            result.geography = geo_resolved
-            result.geography_confidence = 0.5
-            _step("geo_reconcile", "ok", ms, geo_source)
-        else:
-            _step("geo_reconcile", "warn", ms, "still UNKNOWN after all signals")
-
-    # ===== STEP 13: HubSpot CRM Lookup =====
-    if not skip_hubspot and domain:
-        tools_attempted += 1
-        t0 = time.time()
+        _inc_attempted()
+        t0h = time.time()
         try:
             cached = cache_get(domain, "hubspot_lookup") if (domain and not skip_cache) else None
             if cached and cached.get("success") and cached.get("data", {}).get("company_found"):
                 hs_data = cached["data"]
-                ms = int((time.time() - t0) * 1000)
+                ms = int((time.time() - t0h) * 1000)
             else:
                 hs_result = hubspot_enrich(domain, contact_email=result.contact_email)
-                ms = int((time.time() - t0) * 1000)
+                ms = int((time.time() - t0h) * 1000)
                 hs_data = hs_result.get("data", {}) if hs_result.get("success") else {}
-                # Only cache positive matches — negatives should re-check each run
                 if domain and hs_data and hs_data.get("company_found"):
                     cache_set(domain, "hubspot_lookup", hs_data)
 
@@ -891,25 +907,90 @@ def run_enrichment(
                       f"found! {hs_data.get('lifecycle_label', '?')}, "
                       f"{hs_data.get('deal_count', 0)} deals, "
                       f"stage={hs_data.get('deal_stage', 'n/a')}")
-                tools_succeeded += 1
+                _inc_succeeded()
             else:
                 result.hubspot_contact_exists = 1 if hs_data.get("contact_exists") else 0
                 _step("hubspot", "ok", ms, "company not in HubSpot")
-                tools_succeeded += 1
+                _inc_succeeded()
         except Exception as e:
-            ms = int((time.time() - t0) * 1000)
+            ms = int((time.time() - t0h) * 1000)
             _step("hubspot", "fail", ms, str(e))
 
-    # ===== STEP 14: Retail Channel Enrichment =====
-    if domain:
-        t0 = time.time()
+    def task_category():
+        """Step 10: Category classification via LLM (waits for catalog + IG)."""
+        catalog_ready.wait(timeout=60)
+        ig_ready.wait(timeout=45)
+
+        _inc_attempted()
+        t0cat = time.time()
+        try:
+            cached = cache_get(domain, "classify_category") if (domain and not skip_cache) else None
+            if cached and cached.get("success"):
+                cat_data = cached["data"]
+                ms = int((time.time() - t0cat) * 1000)
+            else:
+                catalog_data_local = shared.get("catalog_data")
+                instagram_data_local = shared.get("instagram_data")
+
+                product_titles = None
+                if catalog_data_local and catalog_data_local.get("sample_products"):
+                    product_titles = [
+                        p.get("name", p.get("title", ""))
+                        for p in catalog_data_local["sample_products"][:20]
+                        if p.get("name") or p.get("title")
+                    ]
+
+                ig_bio = None
+                ig_name = None
+                if instagram_data_local:
+                    ig_bio = instagram_data_local.get("biography")
+                    ig_name = instagram_data_local.get("full_name")
+
+                cat_result_local = classify_category(
+                    domain=domain or "",
+                    meta_title=meta_info.get("meta_title"),
+                    meta_description=meta_info.get("meta_description"),
+                    h1_text=meta_info.get("h1_text"),
+                    product_titles=product_titles,
+                    ig_bio=ig_bio,
+                    ig_name=ig_name,
+                )
+                ms = int((time.time() - t0cat) * 1000)
+                cat_data = cat_result_local.get("data", {}) if cat_result_local.get("success") else {}
+                if domain and cat_data.get("category"):
+                    cache_set(domain, "classify_category", cat_data)
+
+            if cat_data.get("category"):
+                result.category = cat_data["category"]
+                result.category_confidence = cat_data.get("confidence", 0)
+                result.category_evidence = cat_data.get("evidence", "")
+                result.company_name = cat_data.get("company_name", "")
+                _step("category", "ok", ms, f"{cat_data['category']} ({cat_data.get('confidence', 0):.2f})")
+                _inc_succeeded()
+            else:
+                _step("category", "warn", ms, "no category")
+        except Exception as e:
+            ms = int((time.time() - t0cat) * 1000)
+            _step("category", "fail", ms, str(e))
+        finally:
+            category_ready.set()
+
+    def task_retail():
+        """Step 14: Retail enrichment (waits for category + IG). Internally parallel."""
+        if not domain:
+            return
+
+        category_ready.wait(timeout=75)
+        ig_ready.wait(timeout=45)
+
+        t0r = time.time()
         try:
             from retail.run_retail_enrichment import run_retail_enrichment
             from datetime import datetime, timezone
 
-            # Gather inputs already available from earlier steps
-            retail_ig_bio = instagram_data.get("biography") if instagram_data else None
-            retail_ig_username = instagram_data.get("username") if instagram_data else None
+            instagram_data_local = shared.get("instagram_data")
+            retail_ig_bio = instagram_data_local.get("biography") if instagram_data_local else None
+            retail_ig_username = instagram_data_local.get("username") if instagram_data_local else None
 
             retail_result = run_retail_enrichment(
                 domain=domain,
@@ -942,10 +1023,85 @@ def run_enrichment(
                 result.retail_confidence = rd.get("retail_confidence")
                 result.retail_enriched_at = datetime.now(timezone.utc).isoformat()
         except Exception as e:
-            ms = int((time.time() - t0) * 1000)
+            ms = int((time.time() - t0r) * 1000)
             _step("retail_enrichment", "fail", ms, str(e))
 
-    # ===== STEP 15: Potential Scoring =====
+    # ================================================================
+    # Launch all tasks in parallel
+    # ================================================================
+    with ThreadPoolExecutor(max_workers=12, thread_name_prefix="enrich") as pool:
+        futures = [
+            pool.submit(task_platform),
+            pool.submit(task_geography),
+            pool.submit(task_social),
+            pool.submit(task_instagram),
+            pool.submit(task_meta_ads),
+            pool.submit(task_fb_followers),
+            pool.submit(task_tiktok),
+            pool.submit(task_catalog),
+            pool.submit(task_traffic),
+            pool.submit(task_google_demand),
+            pool.submit(task_apollo),
+            pool.submit(task_hubspot),
+            pool.submit(task_category),
+            pool.submit(task_retail),
+        ]
+        # Wait for all — exceptions are handled inside each task
+        for f in futures:
+            try:
+                f.result(timeout=120)
+            except Exception:
+                pass
+
+    # ================================================================
+    # PHASE 3: Sequential finalization
+    # ================================================================
+
+    # ===== Geography reconciliation =====
+    apollo_country = shared.get("apollo_country")
+    if result.geography in (None, "UNKNOWN") and result.geography_confidence != 1.0:
+        t0 = time.time()
+        geo_resolved = None
+        geo_source = ""
+
+        COUNTRY_NORM = {
+            "colombia": "COL", "col": "COL",
+            "mexico": "MEX", "méxico": "MEX", "mex": "MEX",
+        }
+
+        if country and country.strip().lower() in COUNTRY_NORM:
+            geo_resolved = COUNTRY_NORM[country.strip().lower()]
+            geo_source = f"input param: {country}"
+
+        if not geo_resolved and apollo_country:
+            norm_key = apollo_country.strip().lower()
+            if norm_key in COUNTRY_NORM:
+                geo_resolved = COUNTRY_NORM[norm_key]
+                geo_source = f"apollo country: {apollo_country}"
+
+        if not geo_resolved and result.currency:
+            CURRENCY_GEO = {"COP": "COL", "MXN": "MEX"}
+            if result.currency in CURRENCY_GEO:
+                geo_resolved = CURRENCY_GEO[result.currency]
+                geo_source = f"catalog currency: {result.currency}"
+
+        if not geo_resolved and domain:
+            if domain.endswith(".co") or ".co." in domain:
+                geo_resolved = "COL"
+                geo_source = f"domain TLD: {domain}"
+            elif domain.endswith(".mx") or ".mx." in domain:
+                geo_resolved = "MEX"
+                geo_source = f"domain TLD: {domain}"
+
+        ms = int((time.time() - t0) * 1000)
+        if geo_resolved:
+            result.geography = geo_resolved
+            result.geography_confidence = 0.5
+            _step("geo_reconcile", "ok", ms, geo_source)
+        else:
+            _step("geo_reconcile", "warn", ms, "still UNKNOWN after all signals")
+
+    # ===== Potential Scoring =====
     t0 = time.time()
     try:
         from scoring.potential_scoring import score_company
