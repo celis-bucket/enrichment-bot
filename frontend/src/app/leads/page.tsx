@@ -668,7 +668,7 @@ export default function LeadsPage() {
               <thead>
                 <tr className="bg-melonn-purple-50 text-melonn-navy text-left">
                   <th className="px-3 py-2.5 font-semibold whitespace-nowrap">Empresa</th>
-                  <th className="px-2 py-2.5 font-semibold whitespace-nowrap">Score</th>
+                  <th className="px-2 py-2.5 font-semibold whitespace-nowrap">Potencial</th>
                   <th className="px-2 py-2.5 font-semibold whitespace-nowrap text-right">IG Seguidores</th>
                   <th className="px-2 py-2.5 font-semibold whitespace-nowrap">Responsable</th>
                   <th className="px-2 py-2.5 font-semibold whitespace-nowrap">Creado</th>
@@ -720,7 +720,11 @@ export default function LeadsPage() {
                         )}
                       </td>
                       <td className="px-2 py-2.5 whitespace-nowrap">
-                        <ScoreBar score={l.lite_triage_score} />
+                        {l.potential_tier ? (
+                          <PotentialTierBadge tier={l.potential_tier} />
+                        ) : (
+                          <span className="text-xs text-gray-400">--</span>
+                        )}
                       </td>
                       <td className="px-2 py-2.5 text-right text-gray-600 whitespace-nowrap">{fmt(l.ig_followers)}</td>
                       <td className="px-2 py-2.5 text-gray-600 whitespace-nowrap truncate max-w-[120px]">
