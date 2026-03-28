@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { Header } from '@/components/Header';
 import { getCompanies, getCompany } from '@/lib/api';
 import { RetailDrawerSection } from '@/components/RetailDrawerSection';
+import { PotentialTierBadge } from '@/components/PotentialTierBadge';
 import type { CompanyListItem, EnrichmentV2Results } from '@/lib/types';
 
 function fmt(n: number | null | undefined): string {
@@ -276,13 +277,13 @@ export default function HistoryPage() {
               <thead>
                 <tr className="bg-melonn-purple-50 text-melonn-navy text-left">
                   <th className="px-3 py-2.5 font-semibold whitespace-nowrap">Empresa</th>
+                  <th className="px-2 py-2.5 font-semibold whitespace-nowrap">Potencial</th>
                   <th className="px-2 py-2.5 font-semibold whitespace-nowrap">País</th>
                   <th className="px-2 py-2.5 font-semibold whitespace-nowrap">Categoría</th>
                   <th className="px-2 py-2.5 font-semibold whitespace-nowrap text-right">IG</th>
                   <th className="px-2 py-2.5 font-semibold whitespace-nowrap text-right">Meta Ads</th>
                   <th className="px-2 py-2.5 font-semibold whitespace-nowrap text-right">Conservador</th>
                   <th className="px-2 py-2.5 font-semibold whitespace-nowrap text-right">Optimista</th>
-                  <th className="px-2 py-2.5 font-semibold whitespace-nowrap">Confianza</th>
                   <th className="px-2 py-2.5 font-semibold whitespace-nowrap">CRM</th>
                   <th className="px-2 py-2.5 font-semibold whitespace-nowrap">Contacto</th>
                   <th className="px-2 py-2.5 font-semibold whitespace-nowrap">Fecha</th>
@@ -301,19 +302,21 @@ export default function HistoryPage() {
                     </td>
                   </tr>
                 ) : (
-                  companies.map((c) => (
-                    <tr key={c.id || c.domain} className="hover:bg-melonn-purple-50/30 transition-colors">
+                  companies.map((c) => {
+                    const isTop = c.potential_tier === 'Extraordinary' || c.potential_tier === 'Very Good';
+                    return (
+                    <tr key={c.id || c.domain} className={`hover:bg-melonn-purple-50/30 transition-colors ${isTop ? 'bg-melonn-green-50/30' : ''}`}>
                       <td className="px-3 py-2.5">
                         <div className="font-medium text-melonn-navy truncate max-w-[160px]">{c.company_name || c.domain}</div>
                         <div className="text-gray-400 truncate max-w-[160px]">{c.domain}</div>
                       </td>
+                      <td className="px-2 py-2.5 whitespace-nowrap"><PotentialTierBadge tier={c.potential_tier} /></td>
                       <td className="px-2 py-2.5 text-gray-600 whitespace-nowrap">{c.geography || '—'}</td>
                       <td className="px-2 py-2.5 text-gray-600 whitespace-nowrap">{c.category || '—'}</td>
                       <td className="px-2 py-2.5 text-right text-gray-600 whitespace-nowrap">{fmt(c.ig_followers)}</td>
                       <td className="px-2 py-2.5 text-right text-gray-600 whitespace-nowrap">{fmt(c.meta_active_ads_count)}</td>
                       <td className="px-2 py-2.5 text-right font-semibold text-melonn-navy whitespace-nowrap">{fmt(c.predicted_orders_p50)}</td>
                       <td className="px-2 py-2.5 text-right text-gray-600 whitespace-nowrap">{fmt(c.predicted_orders_p90)}</td>
-                      <td className="px-2 py-2.5 whitespace-nowrap"><ConfidenceBadge level={c.prediction_confidence} /></td>
                       <td className="px-2 py-2.5 whitespace-nowrap">
                         {c.hubspot_company_id ? (
                           <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-melonn-green-50 text-melonn-green">
@@ -340,7 +343,8 @@ export default function HistoryPage() {
                         </button>
                       </td>
                     </tr>
-                  ))
+                    );
+                  })
                 )}
               </tbody>
             </table>
