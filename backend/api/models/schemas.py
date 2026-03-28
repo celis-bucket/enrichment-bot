@@ -147,6 +147,20 @@ class CompanyListItem(BaseModel):
     hubspot_company_id: Optional[str] = None
     hubspot_deal_count: Optional[int] = None
     hubspot_deal_stage: Optional[str] = None
+    # Retail Channels
+    has_distributors: Optional[bool] = None
+    has_own_stores: Optional[bool] = None
+    has_multibrand_stores: Optional[bool] = None
+    multibrand_store_names: Optional[List] = None
+    on_mercadolibre: Optional[bool] = None
+    on_amazon: Optional[bool] = None
+    on_rappi: Optional[bool] = None
+    on_walmart: Optional[bool] = None
+    on_liverpool: Optional[bool] = None
+    on_coppel: Optional[bool] = None
+    on_tiktok_shop: Optional[bool] = None
+    marketplace_names: Optional[List] = None
+    retail_confidence: Optional[float] = None
     # Potential Scoring
     ecommerce_size_score: Optional[int] = None
     retail_size_score: Optional[int] = None
@@ -195,6 +209,20 @@ class LeadListItem(BaseModel):
     overall_potential_score: Optional[int] = None
     potential_tier: Optional[str] = None
     predicted_orders_p90: Optional[int] = None
+    # Retail Channels
+    has_distributors: Optional[bool] = None
+    has_own_stores: Optional[bool] = None
+    has_multibrand_stores: Optional[bool] = None
+    multibrand_store_names: Optional[List] = None
+    on_mercadolibre: Optional[bool] = None
+    on_amazon: Optional[bool] = None
+    on_rappi: Optional[bool] = None
+    on_walmart: Optional[bool] = None
+    on_liverpool: Optional[bool] = None
+    on_coppel: Optional[bool] = None
+    on_tiktok_shop: Optional[bool] = None
+    marketplace_names: Optional[List] = None
+    retail_confidence: Optional[float] = None
     tool_coverage_pct: Optional[float] = None
     updated_at: Optional[str] = None
 

@@ -114,6 +114,7 @@ SHEET_HEADERS = [
     "on_walmart",
     "on_liverpool",
     "on_coppel",
+    "on_tiktok_shop",
     "marketplace_names",
     "retail_confidence",
     "retail_enriched_at",
@@ -239,6 +240,7 @@ class EnrichmentResult:
     on_walmart: Optional[bool] = None
     on_liverpool: Optional[bool] = None
     on_coppel: Optional[bool] = None
+    on_tiktok_shop: Optional[bool] = None
     marketplace_names: Optional[List[str]] = field(default=None)
     retail_confidence: Optional[float] = None
     retail_enriched_at: Optional[str] = None

@@ -967,6 +967,7 @@ def run_enrichment(
                 result.on_walmart = rd.get("on_walmart")
                 result.on_liverpool = rd.get("on_liverpool")
                 result.on_coppel = rd.get("on_coppel")
+                result.on_tiktok_shop = rd.get("on_tiktok_shop")
                 result.marketplace_names = rd.get("marketplace_names", [])
                 result.retail_confidence = rd.get("retail_confidence")
                 result.retail_enriched_at = datetime.now(timezone.utc).isoformat()

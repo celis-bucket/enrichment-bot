@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Header } from '@/components/Header';
 import { getCompanies, getCompany } from '@/lib/api';
+import { RetailDrawerSection } from '@/components/RetailDrawerSection';
 import type { CompanyListItem, EnrichmentV2Results } from '@/lib/types';
 
 function fmt(n: number | null | undefined): string {
@@ -170,6 +171,8 @@ function DetailDrawer({ domain, onClose }: { domain: string; onClose: () => void
                 <Row label="Optimista (p90)" value={fmt(data.prediction?.predicted_orders_p90)} />
                 <Row label="Confianza" value={data.prediction?.prediction_confidence} />
               </Section>
+
+              <RetailDrawerSection data={data} />
 
               <Section title="HubSpot CRM">
                 <Row label="Estado" value={data.hubspot_company_id ? '✓ En CRM' : 'No encontrada'} />

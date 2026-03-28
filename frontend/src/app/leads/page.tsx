@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { Header } from '@/components/Header';
 import { ScoreBar } from '@/components/ScoreBar';
 import { PotentialTierBadge } from '@/components/PotentialTierBadge';
+import { RetailDrawerSection } from '@/components/RetailDrawerSection';
 import { getLeads, getCompany, getHubSpotDetail, analyzeUrlV2, syncLeads, submitFeedback } from '@/lib/api';
 import type { LeadListItem, EnrichmentV2Results, PipelineStep, ApolloContact, HubSpotContact } from '@/lib/types';
 
@@ -275,6 +276,8 @@ function DetailDrawer({ domain, onClose, onEnrich }: { domain: string; onClose: 
                 )}
                 <Row label="Empleados" value={data.number_employes ? fmt(data.number_employes) : undefined} />
               </Section>
+
+              <RetailDrawerSection data={data} />
 
               <Section title="HubSpot CRM">
                 <Row label="Estado" value={data.hubspot_company_id ? 'En CRM' : 'No encontrada'} />

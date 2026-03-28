@@ -378,6 +378,7 @@ def _build_v2_response(enrichment_result, prediction: dict) -> dict:
         "on_walmart": enrichment_result.on_walmart,
         "on_liverpool": enrichment_result.on_liverpool,
         "on_coppel": enrichment_result.on_coppel,
+        "on_tiktok_shop": enrichment_result.on_tiktok_shop,
         "marketplace_names": enrichment_result.marketplace_names or [],
         "retail_confidence": enrichment_result.retail_confidence,
         # Prediction
@@ -534,6 +535,9 @@ async def list_companies(
             "ig_followers,ig_size_score,ig_health_score,meta_active_ads_count,"
             "contact_name,contact_email,predicted_orders_p50,predicted_orders_p90,prediction_confidence,"
             "hubspot_company_id,hubspot_deal_count,hubspot_deal_stage,"
+            "has_distributors,has_own_stores,has_multibrand_stores,multibrand_store_names,"
+            "on_mercadolibre,on_amazon,on_rappi,on_walmart,on_liverpool,on_coppel,on_tiktok_shop,"
+            "marketplace_names,retail_confidence,"
             "ecommerce_size_score,retail_size_score,combined_size_score,"
             "fit_score,overall_potential_score,potential_tier,"
             "tool_coverage_pct,updated_at"
@@ -602,6 +606,9 @@ async def list_leads(
             "hs_lead_stage,hs_lead_label,hs_lead_owner,hs_last_lost_deal_date,hs_lead_created_at,"
             "hs_last_activity_date,hs_activity_count,hs_open_tasks_count,"
             "overall_potential_score,potential_tier,predicted_orders_p90,"
+            "has_distributors,has_own_stores,has_multibrand_stores,multibrand_store_names,"
+            "on_mercadolibre,on_amazon,on_rappi,on_walmart,on_liverpool,on_coppel,on_tiktok_shop,"
+            "marketplace_names,retail_confidence,"
             "tool_coverage_pct,updated_at"
         )
         rows = client.select(

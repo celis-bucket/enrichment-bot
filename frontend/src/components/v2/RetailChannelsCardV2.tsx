@@ -94,15 +94,18 @@ export function RetailChannelsCardV2({ results, domain = '', feedback = [] }: Re
         <div>
           <p className="text-xs text-melonn-navy/50 mb-1.5">Tiendas Multimarca</p>
           <div className="flex flex-wrap gap-1.5">
-            <BoolBadge value={results.has_multibrand_stores} label="Presente" />
-            {results.multibrand_store_names?.map((store) => (
-              <span
-                key={store}
-                className="text-xs px-2.5 py-1 bg-melonn-purple-50 text-melonn-purple rounded-full font-medium"
-              >
-                {store}
-              </span>
-            ))}
+            {results.has_multibrand_stores && results.multibrand_store_names?.length ? (
+              results.multibrand_store_names.map((store) => (
+                <span
+                  key={store}
+                  className="inline-flex items-center gap-1 text-xs px-2.5 py-1 bg-melonn-green-50 text-melonn-green rounded-full font-medium"
+                >
+                  ✓ {store}
+                </span>
+              ))
+            ) : (
+              <BoolBadge value={results.has_multibrand_stores} label="Multimarca" />
+            )}
           </div>
         </div>
 
