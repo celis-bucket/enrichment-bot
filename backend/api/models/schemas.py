@@ -3,8 +3,9 @@ Pydantic models for API request/response schemas
 """
 
 from datetime import datetime
-from typing import Optional, List
-from pydantic import BaseModel, Field
+import json
+from typing import Any, Optional, List
+from pydantic import BaseModel, Field, field_validator
 
 
 # ===== Request Models =====
@@ -151,7 +152,7 @@ class CompanyListItem(BaseModel):
     has_distributors: Optional[bool] = None
     has_own_stores: Optional[bool] = None
     has_multibrand_stores: Optional[bool] = None
-    multibrand_store_names: Optional[List] = None
+    multibrand_store_names: Optional[Any] = None
     on_mercadolibre: Optional[bool] = None
     on_amazon: Optional[bool] = None
     on_rappi: Optional[bool] = None
@@ -159,7 +160,7 @@ class CompanyListItem(BaseModel):
     on_liverpool: Optional[bool] = None
     on_coppel: Optional[bool] = None
     on_tiktok_shop: Optional[bool] = None
-    marketplace_names: Optional[List] = None
+    marketplace_names: Optional[Any] = None
     retail_confidence: Optional[float] = None
     # Potential Scoring
     ecommerce_size_score: Optional[int] = None
@@ -213,7 +214,7 @@ class LeadListItem(BaseModel):
     has_distributors: Optional[bool] = None
     has_own_stores: Optional[bool] = None
     has_multibrand_stores: Optional[bool] = None
-    multibrand_store_names: Optional[List] = None
+    multibrand_store_names: Optional[Any] = None
     on_mercadolibre: Optional[bool] = None
     on_amazon: Optional[bool] = None
     on_rappi: Optional[bool] = None
@@ -221,7 +222,7 @@ class LeadListItem(BaseModel):
     on_liverpool: Optional[bool] = None
     on_coppel: Optional[bool] = None
     on_tiktok_shop: Optional[bool] = None
-    marketplace_names: Optional[List] = None
+    marketplace_names: Optional[Any] = None
     retail_confidence: Optional[float] = None
     tool_coverage_pct: Optional[float] = None
     updated_at: Optional[str] = None
