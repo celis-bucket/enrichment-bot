@@ -821,7 +821,7 @@ export default function LeadsPage() {
                         ig_size_score: fresh.ig_size_score ?? l.ig_size_score,
                         overall_potential_score: fresh.overall_potential_score ?? l.overall_potential_score,
                         potential_tier: fresh.potential_tier ?? l.potential_tier,
-                        predicted_orders_p90: (fresh as unknown as Record<string, number>).predicted_orders_p90 ?? l.predicted_orders_p90,
+                        predicted_orders_p90: fresh.prediction?.predicted_orders_p90 ?? l.predicted_orders_p90,
                         tool_coverage_pct: fresh.tool_coverage_pct ?? l.tool_coverage_pct,
                         hubspot_deal_stage: fresh.hubspot_deal_stage ?? l.hubspot_deal_stage,
                         hubspot_deal_count: fresh.hubspot_deal_count ?? l.hubspot_deal_count,
