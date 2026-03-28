@@ -2,7 +2,7 @@
 Marketplace Presence Detection Tool
 
 Purpose: Detect if a brand sells on marketplaces relevant to its geography
-  COL: MercadoLibre, Amazon, Rappi
+  COL: MercadoLibre, Rappi
   MEX: MercadoLibre, Amazon, Walmart, Liverpool, Coppel, TikTok Shop
 Inputs: HTML content, domain, brand name, geography
 Outputs: Binary presence per marketplace + evidence
@@ -32,7 +32,6 @@ MARKETPLACE_DOMAINS = {
         "MEX": "mercadolibre.com.mx",
     },
     "amazon": {
-        "COL": "amazon.com",        # No .co TLD for Amazon Colombia
         "MEX": "amazon.com.mx",
     },
     "rappi": {
@@ -54,7 +53,7 @@ MARKETPLACE_DOMAINS = {
 
 # Which marketplaces to evaluate per country
 MARKETPLACES_BY_COUNTRY = {
-    "COL": ["mercadolibre", "amazon", "rappi"],
+    "COL": ["mercadolibre", "rappi"],
     "MEX": ["mercadolibre", "amazon", "walmart", "liverpool", "coppel", "tiktok_shop"],
 }
 # When geography is unknown, evaluate all
@@ -258,7 +257,7 @@ def detect_marketplaces(
     """
     Detect brand presence on marketplaces relevant to the brand's geography.
 
-    COL: MercadoLibre, Amazon, Rappi
+    COL: MercadoLibre, Rappi
     MEX: MercadoLibre, Amazon, Walmart, Liverpool, Coppel, TikTok Shop
 
     Args:
