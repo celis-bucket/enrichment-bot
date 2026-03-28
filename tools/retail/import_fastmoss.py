@@ -194,12 +194,30 @@ def read_fastmoss_excel(filepath: str) -> Dict[str, Any]:
         return {"success": False, "data": {}, "error": f"Failed to read Excel: {str(e)}"}
 
 
+def _normalize_for_match(name: str) -> str:
+    """Normalize a brand/shop name for matching by removing common suffixes and noise."""
+    import re
+    s = name.lower().strip()
+    # Remove common suffixes: MX, Mexico, México, Tienda, Shop, Official, Oficial, SA DE CV
+    s = re.sub(r'\b(mx|mexico|méxico|tienda|shop|official|oficial|store)\b', '', s, flags=re.IGNORECASE)
+    s = re.sub(r'\bsa\s+de\s+cv\b', '', s, flags=re.IGNORECASE)
+    # Remove trailing/leading dashes, dots, spaces
+    s = re.sub(r'[^a-záéíóúñü0-9]+', ' ', s).strip()
+    return s
+
+
 def match_shops_to_companies(
     shops: List[Dict],
     supabase_client: Any,
 ) -> List[Dict]:
     """
-    Match FastMoss shop names to enriched_companies using fuzzy matching.
+    Match FastMoss shop names to enriched_companies using multi-strategy matching.
+
+    Strategies (in order of confidence):
+    1. Exact match on company_name
+    2. Normalized name match (removing MX, Mexico, Shop, etc.)
+    3. Domain-based match (domain without TLD contained in shop name)
+    4. Fuzzy match (token_set_ratio >= 85)
 
     Returns list of dicts: {shop: original shop dict, domain: str, brand_name: str, score: float}
     """
@@ -215,6 +233,24 @@ def match_shops_to_companies(
     if not rows:
         return []
 
+    # Pre-compute normalized names and domain bases for all companies
+    company_index = []
+    for row in rows:
+        company = row.get("company_name", "") or ""
+        domain = row.get("domain", "") or ""
+        # Extract meaningful domain base
+        domain_parts = domain.lower().split(".")
+        domain_base = domain_parts[0]
+        if domain_base in ("www", "tienda", "shop", "store", "mx") and len(domain_parts) > 2:
+            domain_base = domain_parts[1]
+
+        company_index.append({
+            "row": row,
+            "company_lower": company.lower().strip(),
+            "company_normalized": _normalize_for_match(company),
+            "domain_base": domain_base,
+        })
+
     matches = []
     unmatched = []
 
@@ -224,42 +260,50 @@ def match_shops_to_companies(
         if not shop_name and not fm_company:
             continue
 
-        # Try matching with both shop_name and company_name from FastMoss
+        # Build search variants from FastMoss data
         search_names = [n.lower().strip() for n in [shop_name, fm_company] if n]
+        search_normalized = [_normalize_for_match(n) for n in [shop_name, fm_company] if n]
 
         best_match = None
         best_score = 0
 
-        for row in rows:
-            company = row.get("company_name", "") or ""
-            domain = row.get("domain", "") or ""
-            company_lower = company.lower().strip()
-            # Extract meaningful domain part (skip subdomains like "tienda.", "www.", "shop.")
-            domain_parts = domain.lower().split(".")
-            domain_base = domain_parts[0]
-            if domain_base in ("www", "tienda", "shop", "store", "mx") and len(domain_parts) > 2:
-                domain_base = domain_parts[1]
+        for ci in company_index:
+            row = ci["row"]
+            company_lower = ci["company_lower"]
+            company_norm = ci["company_normalized"]
+            domain_base = ci["domain_base"]
 
-            for search_name in search_names:
-                # Exact match on company name
+            for idx, search_name in enumerate(search_names):
+                search_norm = search_normalized[idx] if idx < len(search_normalized) else search_name
+
+                # Strategy 1: Exact match on company name
                 if search_name == company_lower:
                     best_match = row
                     best_score = 100
                     break
 
-                # Domain-based match: require the domain base to be a substantial
-                # portion of the search name (avoid "tienda" matching everything)
+                # Strategy 2: Normalized name match
+                if (search_norm and company_norm and len(company_norm) >= 4
+                        and (search_norm == company_norm
+                             or (company_norm in search_norm and
+                                 len(company_norm) / len(search_norm) >= 0.6)
+                             or (search_norm in company_norm and
+                                 len(search_norm) / len(company_norm) >= 0.6))):
+                    score = 95
+                    if score > best_score:
+                        best_score = score
+                        best_match = row
+
+                # Strategy 3: Domain-based match
                 if domain_base and len(domain_base) >= 5:
-                    # domain_base must match as a whole word or be very similar
-                    if (search_name == domain_base or
-                        (domain_base in search_name and
-                         len(domain_base) / len(search_name) >= 0.5)):
+                    # Check if domain base appears as a substring in normalized shop name
+                    if domain_base in search_norm and len(domain_base) / len(search_norm) >= 0.4:
                         score = 90
                         if score > best_score:
                             best_score = score
                             best_match = row
 
-                # Fuzzy match — require higher threshold to reduce false positives
+                # Strategy 4: Fuzzy match
                 if company_lower and len(company_lower) >= 4:
                     score = token_set_ratio(search_name, company_lower)
                     if score > best_score and score >= 85:

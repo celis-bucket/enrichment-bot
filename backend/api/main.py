@@ -1152,23 +1152,84 @@ async def tiktok_shop_history(shop_name: str, api_key: str = Depends(verify_api_
 
 @app.get("/api/v2/tiktok/shop-for-domain/{domain}", response_model=TikTokShopForDomainResponse, tags=["TikTok"])
 async def tiktok_shop_for_domain(domain: str, api_key: str = Depends(verify_api_key)):
-    """Get TikTok Shop data for a company by its domain (for enrichment card)."""
+    """Get TikTok Shop data for a company by its domain (for enrichment card).
+
+    Searches by matched_domain first, then falls back to fuzzy name matching
+    against the company_name in enriched_companies.
+    """
     import requests as _requests
 
     try:
         client = supabase_client or get_supabase_client()
+        clean_domain = domain.lower().strip()
+
+        # Strategy 1: Search by matched_domain (pre-computed during import)
         resp = _requests.get(
             f"{client.rest_url}/tiktok_shop_weekly",
             headers=client.headers,
             params={
                 "select": "shop_name,sales_count,gmv,products,rating,influencers,fastmoss_url,week_start",
-                "matched_domain": f"eq.{domain.lower().strip()}",
+                "matched_domain": f"eq.{clean_domain}",
                 "order": "week_start.desc",
                 "limit": "2",
             },
             timeout=15,
         )
         rows = resp.json()
+
+        # Strategy 2: If no match by domain, try by company name
+        if not rows:
+            # Get the company_name for this domain
+            company_rows = client.select(
+                "enriched_companies",
+                columns="company_name",
+                eq={"domain": clean_domain},
+                limit=1,
+            )
+            company_name = (company_rows[0].get("company_name") or "") if company_rows else ""
+
+            if company_name:
+                # Search tiktok_shop_weekly by shop_name matching company_name
+                resp = _requests.get(
+                    f"{client.rest_url}/tiktok_shop_weekly",
+                    headers=client.headers,
+                    params={
+                        "select": "shop_name,sales_count,gmv,products,rating,influencers,fastmoss_url,week_start",
+                        "shop_name": f"ilike.{company_name}",
+                        "order": "week_start.desc",
+                        "limit": "2",
+                    },
+                    timeout=15,
+                )
+                rows = resp.json()
+
+                # If exact match didn't work, try partial match
+                if not rows:
+                    resp = _requests.get(
+                        f"{client.rest_url}/tiktok_shop_weekly",
+                        headers=client.headers,
+                        params={
+                            "select": "shop_name,sales_count,gmv,products,rating,influencers,fastmoss_url,week_start",
+                            "shop_name": f"ilike.*{company_name}*",
+                            "order": "week_start.desc",
+                            "limit": "2",
+                        },
+                        timeout=15,
+                    )
+                    rows = resp.json()
+
+                # Update matched_domain for future lookups if we found a match
+                if rows:
+                    try:
+                        _requests.patch(
+                            f"{client.rest_url}/tiktok_shop_weekly",
+                            headers=client.headers,
+                            params={"shop_name": f"eq.{rows[0]['shop_name']}"},
+                            json={"matched_domain": clean_domain},
+                            timeout=10,
+                        )
+                    except Exception:
+                        pass
 
         if not rows:
             return TikTokShopForDomainResponse(has_data=False)
