@@ -177,19 +177,19 @@ Each channel result is cached per domain with 7-day TTL:
 - `retail_confidence` reflects the ratio of channels that returned data
 - The orchestrator never raises exceptions
 
-## Future Integration
+## Integration with Main Pipeline
 
-### As Step 13 in main pipeline
-Add to `run_enrichment.py` after Apollo/geo reconciliation:
+### Step 14 in run_enrichment.py (IMPLEMENTED)
+Retail runs after HubSpot (step 13) and before Potential Scoring (step 15). Reuses HTML from step 2, geography from user input, category from step 10, and IG bio from step 6:
 ```python
-# Pass available context from earlier steps
 retail_result = run_retail_enrichment(
     domain=domain, brand_name=result.company_name,
     html=html, geography=result.geography,
-    category=result.category, ig_bio=ig_bio,
-    knowledge_graph=demand_data.get("knowledge_graph"),
+    category=result.category, ig_bio=retail_ig_bio,
+    ig_username=retail_ig_username, on_step=on_step,
 )
 ```
+All retail fields are copied into EnrichmentResult and written to Supabase in a single upsert.
 
 ### Department store scrapers (Phase 3)
 Generic scraper driven by `scraper_config` JSONB. Runs monthly, populates `retail_store_brands`. Each store can yield 200-2000 brands.

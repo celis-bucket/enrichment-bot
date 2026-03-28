@@ -30,21 +30,22 @@ Takes a URL or domain and runs the full enrichment pipeline (~20-60 seconds). Re
 **Request:**
 ```json
 {
-  "url": "thehairg.com"
+  "url": "thehairg.com",
+  "geography": "COL"
 }
 ```
 
-The `url` field accepts:
-- A domain: `thehairg.com`
-- A full URL: `https://thehairg.com/`
-- A brand name: `The Hair Generation` (resolved via Google Search)
+| Field | Required | Description |
+|-------|----------|-------------|
+| `url` | Yes | Domain, full URL, or brand name |
+| `geography` | Yes | `"COL"` or `"MEX"` — determines marketplace detection and store lists |
 
 **cURL example:**
 ```bash
 curl -X POST "${ENRICHMENT_API_URL}/api/v2/enrichment/analyze-stream" \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer ${ENRICHMENT_API_KEY}" \
-  -d '{"url": "thehairg.com"}'
+  -d '{"url": "thehairg.com", "geography": "COL"}'
 ```
 
 **Response (SSE stream):**
@@ -170,23 +171,53 @@ interface EnrichmentResult {
   site_serp_coverage_score: number | null;  // 0.0 - 1.0
   google_confidence: number | null;
 
-  // Fulfillment
-  fulfillment_provider: string | null;
-  fulfillment_confidence: number | null;
+  // HubSpot CRM
+  hubspot_company_id: string | null;
+  hubspot_company_url: string | null;
+  hubspot_deal_count: number | null;
+  hubspot_deal_stage: string | null;
+  hubspot_contact_exists: number | null;  // 1 or 0
+  hubspot_lifecycle_label: string | null;
+  hubspot_last_contacted: string | null;
+
+  // Retail Channels
+  has_distributors: boolean | null;       // Brand has distributor/wholesale program
+  has_own_stores: boolean | null;         // Brand has own physical stores
+  own_store_count_col: number | null;     // Store count in Colombia
+  own_store_count_mex: number | null;     // Store count in Mexico
+  has_multibrand_stores: boolean | null;  // Brand sold in department stores
+  multibrand_store_names: string[];       // ["Liverpool", "Walmart", ...]
+  on_mercadolibre: boolean | null;
+  on_amazon: boolean | null;
+  on_rappi: boolean | null;              // COL only
+  on_walmart: boolean | null;            // MEX only
+  on_liverpool: boolean | null;          // MEX only
+  on_coppel: boolean | null;             // MEX only
+  on_tiktok_shop: boolean | null;        // MEX only
+  marketplace_names: string[];           // ["MercadoLibre", "Amazon", ...]
+  retail_confidence: number | null;      // 0.0 - 1.0
 
   // Orders prediction
   prediction: {
-    predicted_orders_p10: number;    // Conservative estimate
-    predicted_orders_p50: number;    // Median estimate
-    predicted_orders_p90: number;    // Optimistic estimate
+    predicted_orders_p10: number;
+    predicted_orders_p50: number;
+    predicted_orders_p90: number;
     prediction_confidence: "high" | "medium" | "low";
   } | null;
 
+  // Potential Scoring
+  ecommerce_size_score: number | null;     // 0-100
+  retail_size_score: number | null;        // 0-100
+  combined_size_score: number | null;      // 0-100
+  fit_score: number | null;               // 0-100
+  overall_potential_score: number | null;  // 0-100
+  potential_tier: string | null;          // "Extraordinary", "Very Good", "Good", "Low"
+
   // Execution metadata
-  tool_coverage_pct: number | null;  // 0.0 - 1.0 (% of tools that succeeded)
+  tool_coverage_pct: number | null;
   total_runtime_sec: number | null;
   cost_estimate_usd: number | null;
-  workflow_log: WorkflowStep[];      // Step-by-step execution log
+  workflow_log: WorkflowStep[];
 }
 
 interface ApolloContact {
