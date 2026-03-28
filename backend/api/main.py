@@ -215,6 +215,21 @@ async def root():
 
 
 
+def _parse_json_list(value) -> list:
+    """Parse a value that might be a JSON string, a list, or None into a list."""
+    if value is None:
+        return []
+    if isinstance(value, list):
+        return value
+    if isinstance(value, str):
+        try:
+            parsed = json.loads(value)
+            return parsed if isinstance(parsed, list) else []
+        except (json.JSONDecodeError, TypeError):
+            return []
+    return []
+
+
 def _run_prediction(enrichment_result) -> dict:
     """Run the orders estimator on an enrichment result. Returns prediction dict."""
     try:
@@ -780,7 +795,7 @@ async def get_company(domain: str, api_key: str = Depends(verify_api_key)):
             "own_store_count_col": row.get("own_store_count_col"),
             "own_store_count_mex": row.get("own_store_count_mex"),
             "has_multibrand_stores": row.get("has_multibrand_stores"),
-            "multibrand_store_names": row.get("multibrand_store_names") or [],
+            "multibrand_store_names": _parse_json_list(row.get("multibrand_store_names")),
             "on_mercadolibre": row.get("on_mercadolibre"),
             "on_amazon": row.get("on_amazon"),
             "on_rappi": row.get("on_rappi"),
@@ -788,6 +803,7 @@ async def get_company(domain: str, api_key: str = Depends(verify_api_key)):
             "on_liverpool": row.get("on_liverpool"),
             "on_coppel": row.get("on_coppel"),
             "on_tiktok_shop": row.get("on_tiktok_shop"),
+            "marketplace_names": _parse_json_list(row.get("marketplace_names")),
             "retail_confidence": row.get("retail_confidence"),
             "prediction": prediction,
             # Potential Scoring
