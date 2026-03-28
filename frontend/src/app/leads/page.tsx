@@ -293,14 +293,19 @@ function DetailDrawer({ domain, onClose, onEnrich }: { domain: string; onClose: 
 
 // --- Enrichment Modal ---
 function EnrichModal({ domain, geography, onClose, onDone }: { domain: string; geography: string; onClose: () => void; onDone: () => void }) {
+  const [selectedGeo, setSelectedGeo] = useState<string | null>(geography && geography !== 'UNKNOWN' ? geography : null);
+  const [started, setStarted] = useState(false);
   const [steps, setSteps] = useState<PipelineStep[]>([]);
-  const [status, setStatus] = useState<'running' | 'done' | 'error'>('running');
+  const [status, setStatus] = useState<'picking' | 'running' | 'done' | 'error'>('picking');
   const [error, setError] = useState('');
 
-  useEffect(() => {
+  const startEnrichment = (geo: string) => {
+    setSelectedGeo(geo);
+    setStarted(true);
+    setStatus('running');
     analyzeUrlV2(
       domain,
-      geography || 'COL',
+      geo,
       (step) => {
         setSteps((prev) => {
           const existing = prev.findIndex((s) => s.step === step.step);
@@ -315,51 +320,91 @@ function EnrichModal({ domain, geography, onClose, onDone }: { domain: string; g
       () => { setStatus('done'); },
       (err) => { setStatus('error'); setError(err); },
     ).catch((err) => { setStatus('error'); setError(err.message); });
-  }, [domain]);
+  };
 
   return (
     <>
-      <div className="fixed inset-0 bg-black/30 z-40" onClick={status !== 'running' ? onClose : undefined} />
+      <div className="fixed inset-0 bg-black/30 z-40" onClick={status === 'picking' || status === 'done' || status === 'error' ? onClose : undefined} />
       <div className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[500px] max-w-[90vw] bg-white rounded-xl shadow-2xl z-50 p-6">
         <h3 className="font-bold text-melonn-navy font-heading mb-1">Full Enrichment: {domain}</h3>
-        <p className="text-xs text-gray-400 mb-4">
-          {status === 'running' ? 'Ejecutando pipeline completo...' : status === 'done' ? 'Completado' : 'Error'}
-        </p>
 
-        <div className="max-h-[300px] overflow-y-auto space-y-1 mb-4">
-          {steps.map((s) => (
-            <div key={s.step} className="flex items-center gap-2 text-xs">
-              <span className={`w-2 h-2 rounded-full shrink-0 ${
-                s.status === 'ok' ? 'bg-melonn-green' :
-                s.status === 'running' ? 'bg-yellow-400 animate-pulse' :
-                s.status === 'fail' ? 'bg-red-400' : 'bg-gray-300'
-              }`} />
-              <span className="text-melonn-navy font-medium w-32 truncate">{s.step}</span>
-              <span className="text-gray-400 truncate flex-1">{s.detail}</span>
-              {s.duration_ms != null && (
-                <span className="text-gray-300 shrink-0">{(s.duration_ms / 1000).toFixed(1)}s</span>
+        {/* Country picker — shown before enrichment starts */}
+        {status === 'picking' && (
+          <>
+            <p className="text-sm text-gray-500 mb-4">Selecciona el pais para enriquecer:</p>
+            <div className="flex gap-3 mb-4">
+              <button
+                onClick={() => startEnrichment('COL')}
+                className={`flex-1 py-3 rounded-lg border-2 text-sm font-semibold transition-all ${
+                  selectedGeo === 'COL'
+                    ? 'border-melonn-green bg-melonn-green/10 text-melonn-green'
+                    : 'border-gray-200 text-gray-600 hover:border-melonn-green/50'
+                }`}
+              >
+                Colombia
+              </button>
+              <button
+                onClick={() => startEnrichment('MEX')}
+                className={`flex-1 py-3 rounded-lg border-2 text-sm font-semibold transition-all ${
+                  selectedGeo === 'MEX'
+                    ? 'border-melonn-green bg-melonn-green/10 text-melonn-green'
+                    : 'border-gray-200 text-gray-600 hover:border-melonn-green/50'
+                }`}
+              >
+                Mexico
+              </button>
+            </div>
+            <div className="flex justify-end">
+              <button onClick={onClose} className="px-4 py-2 rounded-md bg-gray-200 text-gray-700 text-sm font-medium">
+                Cancelar
+              </button>
+            </div>
+          </>
+        )}
+
+        {/* Pipeline progress — shown after country is selected */}
+        {status !== 'picking' && (
+          <>
+            <p className="text-xs text-gray-400 mb-4">
+              {status === 'running' ? `Ejecutando pipeline completo (${selectedGeo})...` : status === 'done' ? 'Completado' : 'Error'}
+            </p>
+
+            <div className="max-h-[300px] overflow-y-auto space-y-1 mb-4">
+              {steps.map((s) => (
+                <div key={s.step} className="flex items-center gap-2 text-xs">
+                  <span className={`w-2 h-2 rounded-full shrink-0 ${
+                    s.status === 'ok' ? 'bg-melonn-green' :
+                    s.status === 'running' ? 'bg-yellow-400 animate-pulse' :
+                    s.status === 'fail' ? 'bg-red-400' : 'bg-gray-300'
+                  }`} />
+                  <span className="text-melonn-navy font-medium w-32 truncate">{s.step}</span>
+                  <span className="text-gray-400 truncate flex-1">{s.detail}</span>
+                  {s.duration_ms != null && (
+                    <span className="text-gray-300 shrink-0">{(s.duration_ms / 1000).toFixed(1)}s</span>
+                  )}
+                </div>
+              ))}
+            </div>
+
+            {error && <p className="text-xs text-red-500 mb-3">{error}</p>}
+
+            <div className="flex justify-end gap-2">
+              {status === 'done' && (
+                <button
+                  onClick={() => { onDone(); onClose(); }}
+                  className="px-4 py-2 rounded-md bg-melonn-green text-white text-sm font-medium hover:bg-melonn-green/90"
+                >
+                  Listo
+                </button>
+              )}
+              {status === 'error' && (
+                <button onClick={onClose} className="px-4 py-2 rounded-md bg-gray-200 text-gray-700 text-sm font-medium">
+                  Cerrar
+                </button>
               )}
             </div>
-          ))}
-        </div>
-
-        {error && <p className="text-xs text-red-500 mb-3">{error}</p>}
-
-        <div className="flex justify-end gap-2">
-          {status === 'done' && (
-            <button
-              onClick={() => { onDone(); onClose(); }}
-              className="px-4 py-2 rounded-md bg-melonn-green text-white text-sm font-medium hover:bg-melonn-green/90"
-            >
-              Listo
-            </button>
-          )}
-          {status === 'error' && (
-            <button onClick={onClose} className="px-4 py-2 rounded-md bg-gray-200 text-gray-700 text-sm font-medium">
-              Cerrar
-            </button>
-          )}
-        </div>
+          </>
+        )}
       </div>
     </>
   );
