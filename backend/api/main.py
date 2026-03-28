@@ -464,6 +464,21 @@ async def analyze_stream_v2(request: SyncEnrichmentRequest, api_key: str = Depen
         pred_status = "ok" if prediction else "warn"
         yield f"data: {json.dumps({'type': 'step', 'step': 'Orders estimation', 'status': pred_status, 'duration_ms': ms, 'detail': ''})}\n\n"
 
+        # Re-score with prediction data (scoring ran before prediction in pipeline)
+        if prediction:
+            from tools.scoring.potential_scoring import score_company
+            score_input = enrichment_result.to_dict()
+            score_input["predicted_orders_p90"] = prediction.get("predicted_orders_p90")
+            score_input["predicted_orders_p50"] = prediction.get("predicted_orders_p50")
+            score_input["predicted_orders_p10"] = prediction.get("predicted_orders_p10")
+            scores = score_company(score_input)
+            enrichment_result.ecommerce_size_score = scores["ecommerce_size_score"]
+            enrichment_result.retail_size_score = scores["retail_size_score"]
+            enrichment_result.combined_size_score = scores["combined_size_score"]
+            enrichment_result.fit_score = scores["fit_score"]
+            enrichment_result.overall_potential_score = scores["overall_potential_score"]
+            enrichment_result.potential_tier = scores["potential_tier"]
+
         # Save to Supabase
         yield f"data: {json.dumps({'type': 'step', 'step': 'Saving to database', 'status': 'running', 'duration_ms': 0, 'detail': ''})}\n\n"
         t0 = time.time()
