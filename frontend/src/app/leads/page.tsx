@@ -215,15 +215,11 @@ function DetailDrawer({ domain, onClose, onEnrich }: { domain: string; onClose: 
                 <Row label="TikTok Seguidores" value={data.tiktok_followers ? fmt(data.tiktok_followers) : undefined} />
               </Section>
 
-              {(data.meta_active_ads_count != null || data.tiktok_active_ads_count != null) && (
+              {(data.meta_active_ads_count != null) && (
                 <Section title="Publicidad">
                   <Row label="Meta Ads activos" value={data.meta_active_ads_count != null ? String(data.meta_active_ads_count) : undefined} />
                   <Row label="Meta Ad Library" value={data.meta_ad_library_url
                     ? <a href={data.meta_ad_library_url} target="_blank" rel="noreferrer" className="text-melonn-purple underline">Ver</a>
-                    : undefined} />
-                  <Row label="TikTok Ads activos" value={data.tiktok_active_ads_count != null ? String(data.tiktok_active_ads_count) : undefined} />
-                  <Row label="TikTok Ad Library" value={data.tiktok_ads_library_url
-                    ? <a href={data.tiktok_ads_library_url} target="_blank" rel="noreferrer" className="text-melonn-purple underline">Ver</a>
                     : undefined} />
                 </Section>
               )}

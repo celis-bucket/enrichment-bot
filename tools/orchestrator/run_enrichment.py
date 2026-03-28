@@ -29,7 +29,6 @@ from detection.detect_geography import detect_geography_from_html
 from social.extract_social_links import extract_social_links_from_html, search_instagram_via_serper, search_facebook_via_serper
 from social.apify_instagram import get_instagram_metrics, extract_instagram_username
 from social.apify_meta_ads import get_meta_ads_count, get_meta_ads_multi_search, searchapi_facebook_page
-from social.searchapi_tiktok_ads import get_tiktok_ads_multi_search
 from ecommerce.scrape_product_catalog import scrape_product_catalog
 from traffic.estimate_traffic import estimate_traffic_from_html
 from scoring.instagram_scoring import calculate_ig_size_score, calculate_ig_health_score
@@ -618,35 +617,6 @@ def run_enrichment(
         except Exception as e:
             ms = int((time.time() - t0) * 1000)
             _step("tiktok", "fail", ms, str(e))
-
-    # ===== STEP 6d: TikTok Ads (SearchAPI) — disabled for Colombia =====
-    tiktok_ads_search_terms = [t for t in [tiktok_username, brand_name_for_social] if t]
-    if tiktok_ads_search_terms and not _skip_tiktok:
-        tools_attempted += 1
-        t0 = time.time()
-        _step("tiktok_ads", "running", 0, f"searching: {tiktok_ads_search_terms}")
-        try:
-            cached = cache_get(domain, "tiktok_ads") if (domain and not skip_cache) else None
-            if cached and cached.get("success"):
-                ta = cached["data"]
-                ms = int((time.time() - t0) * 1000)
-            else:
-                tiktok_ads_result = get_tiktok_ads_multi_search(tiktok_ads_search_terms)
-                ms = int((time.time() - t0) * 1000)
-                ta = tiktok_ads_result.get("data", {}) if tiktok_ads_result.get("success") else {}
-                if domain and ta:
-                    cache_set(domain, "tiktok_ads", ta)
-
-            if ta.get("active_ads_count") is not None:
-                result.tiktok_active_ads_count = ta["active_ads_count"]
-                search_used = ta.get("search_term", "?")
-                _step("tiktok_ads", "ok", ms, f"{ta['active_ads_count']} active ads (term: {search_used})")
-                tools_succeeded += 1
-            else:
-                _step("tiktok_ads", "warn", ms, "no TikTok ads data")
-        except Exception as e:
-            ms = int((time.time() - t0) * 1000)
-            _step("tiktok_ads", "fail", ms, str(e))
 
     # ===== STEP 7: Product catalog =====
     tools_attempted += 1

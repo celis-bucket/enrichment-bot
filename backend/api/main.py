@@ -298,18 +298,6 @@ def _build_v2_response(enrichment_result, prediction: dict) -> dict:
                 f"&q={encoded}&search_type=keyword_unordered&media_type=all"
             )
 
-    # Build TikTok Ads Library URL from company name or domain
-    tiktok_ads_library_url = None
-    if enrichment_result.tiktok_active_ads_count is not None:
-        search_term = enrichment_result.company_name or enrichment_result.domain or ""
-        if search_term:
-            import urllib.parse
-            encoded = urllib.parse.quote(search_term)
-            tiktok_ads_library_url = (
-                f"https://library.tiktok.com/ads"
-                f"?region=all&adv_name={encoded}&sort_by=last_shown_date"
-            )
-
     return {
         # Identity
         "company_name": enrichment_result.company_name,
@@ -340,9 +328,6 @@ def _build_v2_response(enrichment_result, prediction: dict) -> dict:
         # Meta Ads
         "meta_active_ads_count": enrichment_result.meta_active_ads_count,
         "meta_ad_library_url": meta_ad_library_url,
-        # TikTok Ads
-        "tiktok_active_ads_count": enrichment_result.tiktok_active_ads_count,
-        "tiktok_ads_library_url": tiktok_ads_library_url,
         # Catalog
         "product_count": enrichment_result.product_count,
         "avg_price": enrichment_result.avg_price,
@@ -748,18 +733,6 @@ async def get_company(domain: str, api_key: str = Depends(verify_api_key)):
                     f"&q={encoded}&search_type=keyword_unordered&media_type=all"
                 )
 
-        # Build TikTok Ads Library URL
-        tiktok_ads_library_url = None
-        if row.get("tiktok_active_ads_count") is not None:
-            import urllib.parse
-            search_term = row.get("company_name") or row.get("domain") or ""
-            if search_term:
-                encoded = urllib.parse.quote(search_term)
-                tiktok_ads_library_url = (
-                    f"https://library.tiktok.com/ads"
-                    f"?region=all&adv_name={encoded}&sort_by=last_shown_date"
-                )
-
         return {
             "company_name": row.get("company_name"),
             "domain": row.get("domain"),
@@ -783,8 +756,6 @@ async def get_company(domain: str, api_key: str = Depends(verify_api_key)):
             "contacts": row.get("contacts_list") or [],
             "meta_active_ads_count": row.get("meta_active_ads_count"),
             "meta_ad_library_url": meta_ad_library_url,
-            "tiktok_active_ads_count": row.get("tiktok_active_ads_count"),
-            "tiktok_ads_library_url": tiktok_ads_library_url,
             "product_count": row.get("product_count"),
             "avg_price": row.get("avg_price"),
             "price_range_min": row.get("price_range_min"),
