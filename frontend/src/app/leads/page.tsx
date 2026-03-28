@@ -804,7 +804,41 @@ export default function LeadsPage() {
           domain={enrichingDomain}
           geography={enrichingGeo}
           onClose={() => setEnrichingDomain(null)}
-          onDone={fetchLeads}
+          onDone={async () => {
+            // Update only the enriched row in place — no full reload, no scroll reset
+            try {
+              const fresh = await getCompany(enrichingDomain!);
+              setLeads((prev) =>
+                prev.map((l) =>
+                  l.domain === enrichingDomain
+                    ? {
+                        ...l,
+                        enrichment_type: 'full',
+                        company_name: fresh.company_name ?? l.company_name,
+                        platform: fresh.platform ?? l.platform,
+                        geography: fresh.geography ?? l.geography,
+                        ig_followers: fresh.ig_followers ?? l.ig_followers,
+                        ig_size_score: fresh.ig_size_score ?? l.ig_size_score,
+                        overall_potential_score: fresh.overall_potential_score ?? l.overall_potential_score,
+                        potential_tier: fresh.potential_tier ?? l.potential_tier,
+                        predicted_orders_p90: (fresh as unknown as Record<string, number>).predicted_orders_p90 ?? l.predicted_orders_p90,
+                        tool_coverage_pct: fresh.tool_coverage_pct ?? l.tool_coverage_pct,
+                        hubspot_deal_stage: fresh.hubspot_deal_stage ?? l.hubspot_deal_stage,
+                        hubspot_deal_count: fresh.hubspot_deal_count ?? l.hubspot_deal_count,
+                      }
+                    : l,
+                ),
+              );
+              setFullyEnrichedCount((c) => c + 1);
+            } catch {
+              // Fallback: just mark as enriched locally
+              setLeads((prev) =>
+                prev.map((l) =>
+                  l.domain === enrichingDomain ? { ...l, enrichment_type: 'full' } : l,
+                ),
+              );
+            }
+          }}
         />
       )}
     </div>
