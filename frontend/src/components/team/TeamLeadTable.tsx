@@ -7,6 +7,7 @@ interface TeamLeadTableProps {
   leads: LeadListItem[];
   sortBy: string;
   onSortChange: (field: string) => void;
+  onEnrich: (domain: string, geography: string) => void;
 }
 
 function formatRelativeDate(dateStr: string | null | undefined): { text: string; stale: boolean; cold: boolean } {
@@ -61,7 +62,7 @@ const SORT_OPTIONS = [
   { value: 'updated_at', label: 'Actualizado' },
 ];
 
-export function TeamLeadTable({ leads, sortBy, onSortChange }: TeamLeadTableProps) {
+export function TeamLeadTable({ leads, sortBy, onSortChange, onEnrich }: TeamLeadTableProps) {
   return (
     <div className="bg-white rounded-xl shadow-sm overflow-hidden">
       <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100">
@@ -89,6 +90,7 @@ export function TeamLeadTable({ leads, sortBy, onSortChange }: TeamLeadTableProp
               <th className="text-left px-3 py-2 font-medium">Ult. Actividad</th>
               <th className="text-left px-3 py-2 font-medium">Creado</th>
               <th className="text-left px-3 py-2 font-medium">Enrich</th>
+              <th className="px-3 py-2"></th>
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-50">
@@ -138,12 +140,26 @@ export function TeamLeadTable({ leads, sortBy, onSortChange }: TeamLeadTableProp
                   <td className="px-3 py-2.5">
                     <EnrichmentBadge type={lead.enrichment_type} />
                   </td>
+                  <td className="px-3 py-2.5">
+                    {lead.enrichment_type !== 'full' && lead.domain && (
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onEnrich(lead.domain!, lead.geography || 'COL');
+                        }}
+                        className="px-3 py-1 rounded-md bg-melonn-purple text-white text-xs font-medium
+                                   hover:bg-melonn-purple/90 transition-colors whitespace-nowrap"
+                      >
+                        Enrich
+                      </button>
+                    )}
+                  </td>
                 </tr>
               );
             })}
             {leads.length === 0 && (
               <tr>
-                <td colSpan={7} className="px-4 py-8 text-center text-gray-400 text-sm">
+                <td colSpan={8} className="px-4 py-8 text-center text-gray-400 text-sm">
                   No hay leads asignados.
                 </td>
               </tr>
