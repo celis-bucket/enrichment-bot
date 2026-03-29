@@ -362,6 +362,46 @@ class TikTokShopForDomainResponse(BaseModel):
     has_data: bool = False
 
 
+# ===== Team Prospecting Panel Models =====
+
+class TeamStatsResponse(BaseModel):
+    """Aggregated KPIs for one SDR"""
+    owner: str
+    total_leads: int = 0
+    tier_distribution: dict = Field(default_factory=dict)
+    stage_distribution: dict = Field(default_factory=dict)
+    leads_not_enriched: int = 0
+    leads_worth_enrichment: int = 0
+    leads_cold_30d: int = 0
+    leads_stale_6m: int = 0
+    enrichment_pct: float = 0.0
+    avg_potential_score: float = 0.0
+
+
+class TeamAlert(BaseModel):
+    """A single actionable alert for an SDR"""
+    alert_type: str
+    title: str
+    severity: str  # "red", "yellow", "green"
+    count: int
+    description: str
+    affected_domains: List[str] = Field(default_factory=list)
+
+
+class TeamAlertsResponse(BaseModel):
+    """Computed alerts for one SDR"""
+    owner: str
+    alerts: List[TeamAlert] = Field(default_factory=list)
+
+
+class TeamLeadListResponse(BaseModel):
+    """Paginated lead list for a specific SDR"""
+    companies: List[LeadListItem] = Field(default_factory=list)
+    total: int = 0
+    page: int = 1
+    limit: int = 25
+
+
 class HubSpotDetailResponse(BaseModel):
     """Extended HubSpot company detail for the history modal"""
     company_name: str = ""

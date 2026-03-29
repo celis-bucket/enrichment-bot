@@ -287,6 +287,42 @@ export interface TikTokShopForDomainResponse {
   has_data: boolean;
 }
 
+// ===== Team Prospecting Panel Types =====
+
+export interface TeamStatsResponse {
+  owner: string;
+  total_leads: number;
+  tier_distribution: Record<string, number>;
+  stage_distribution: Record<string, number>;
+  leads_not_enriched: number;
+  leads_worth_enrichment: number;
+  leads_cold_30d: number;
+  leads_stale_6m: number;
+  enrichment_pct: number;
+  avg_potential_score: number;
+}
+
+export interface TeamAlert {
+  alert_type: string;
+  title: string;
+  severity: 'red' | 'yellow' | 'green';
+  count: number;
+  description: string;
+  affected_domains: string[];
+}
+
+export interface TeamAlertsResponse {
+  owner: string;
+  alerts: TeamAlert[];
+}
+
+export interface TeamLeadListResponse {
+  companies: LeadListItem[];
+  total: number;
+  page: number;
+  limit: number;
+}
+
 export interface HubSpotDetail {
   company_name: string;
   created_at?: string | null;

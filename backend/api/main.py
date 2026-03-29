@@ -59,6 +59,10 @@ from api.models.schemas import (
     TikTokShopHistoryResponse,
     TikTokShopHistoryItem,
     TikTokShopForDomainResponse,
+    TeamStatsResponse,
+    TeamAlert,
+    TeamAlertsResponse,
+    TeamLeadListResponse,
 )
 from hubspot.hubspot_lookup import get_company_detail
 
@@ -709,6 +713,287 @@ async def sync_leads_endpoint(api_key: str = Depends(verify_api_key)):
             yield f"data: {_json.dumps(msg)}\n\n"
 
     return StreamingResponse(event_generator(), media_type="text/event-stream")
+
+
+# ===== Team Prospecting Panel =====
+
+_TEAM_EXCLUDE_STAGES = {"cierre ganado", "consideracion", "parametrización", "onboarding"}
+
+_TEAM_COLUMNS = (
+    "id,domain,clean_url,company_name,platform,geography,"
+    "ig_followers,ig_size_score,lite_triage_score,worth_full_enrichment,"
+    "enrichment_type,hubspot_company_id,hubspot_deal_stage,hubspot_deal_count,"
+    "hs_lead_stage,hs_lead_label,hs_lead_owner,hs_last_lost_deal_date,hs_lead_created_at,"
+    "hs_last_activity_date,hs_activity_count,hs_open_tasks_count,"
+    "overall_potential_score,potential_tier,predicted_orders_p90,"
+    "has_distributors,has_own_stores,has_multibrand_stores,multibrand_store_names,"
+    "on_mercadolibre,on_amazon,on_rappi,on_walmart,on_liverpool,on_coppel,on_tiktok_shop,"
+    "marketplace_names,retail_confidence,"
+    "tool_coverage_pct,updated_at"
+)
+
+
+def _fetch_owner_leads(owner: str) -> list[dict]:
+    """Fetch all leads for a specific owner, excluding won/active deals."""
+    client = supabase_client or get_supabase_client()
+    rows = client.select(
+        "enriched_companies",
+        columns=_TEAM_COLUMNS,
+        eq={"source": "hubspot_leads", "hs_lead_owner": owner},
+        order="overall_potential_score.desc.nullslast",
+    )
+    return [r for r in rows if not (
+        r.get("hubspot_deal_stage") and r["hubspot_deal_stage"].lower() in _TEAM_EXCLUDE_STAGES
+    )]
+
+
+@app.get("/api/v2/team/members", tags=["Team"])
+async def list_team_members(api_key: str = Depends(verify_api_key)):
+    """List unique lead owners from the database."""
+    try:
+        client = supabase_client or get_supabase_client()
+        rows = client.select(
+            "enriched_companies",
+            columns="hs_lead_owner",
+            eq={"source": "hubspot_leads"},
+        )
+        owners = sorted({r["hs_lead_owner"] for r in rows if r.get("hs_lead_owner")})
+        return {"members": owners}
+    except Exception as e:
+        print(f"[WARN] Team members failed: {e}")
+        return {"members": []}
+
+
+@app.get("/api/v2/team/stats", response_model=TeamStatsResponse, tags=["Team"])
+async def get_team_stats(
+    owner: str = Query(..., description="Lead owner name"),
+    api_key: str = Depends(verify_api_key),
+):
+    """Aggregated prospecting KPIs for one SDR."""
+    from collections import Counter
+    from datetime import datetime, timedelta, timezone
+
+    try:
+        rows = _fetch_owner_leads(owner)
+        total = len(rows)
+        if total == 0:
+            return TeamStatsResponse(owner=owner)
+
+        now = datetime.now(timezone.utc)
+        thirty_days_ago = now - timedelta(days=30)
+        six_months_ago = now - timedelta(days=180)
+
+        tier_counter = Counter()
+        stage_counter = Counter()
+        full_count = 0
+        worth_count = 0
+        cold_count = 0
+        stale_count = 0
+        score_sum = 0
+        score_n = 0
+
+        for r in rows:
+            tier = r.get("potential_tier") or "Unknown"
+            tier_counter[tier] += 1
+
+            stage = r.get("hs_lead_stage") or "Sin stage"
+            stage_counter[stage] += 1
+
+            if r.get("enrichment_type") == "full":
+                full_count += 1
+            if r.get("worth_full_enrichment") and r.get("enrichment_type") != "full":
+                worth_count += 1
+
+            if r.get("overall_potential_score") is not None:
+                score_sum += r["overall_potential_score"]
+                score_n += 1
+
+            # Cold: no activity in 30+ days
+            last_act = r.get("hs_last_activity_date")
+            if last_act:
+                try:
+                    last_dt = datetime.fromisoformat(last_act.replace("Z", "+00:00"))
+                    if last_dt < thirty_days_ago:
+                        cold_count += 1
+                except (ValueError, TypeError):
+                    cold_count += 1
+            else:
+                cold_count += 1
+
+            # Stale: created >6 months ago with no deal
+            created = r.get("hs_lead_created_at")
+            deal_count = r.get("hubspot_deal_count") or 0
+            if created and deal_count == 0:
+                try:
+                    created_dt = datetime.fromisoformat(created.replace("Z", "+00:00"))
+                    if created_dt < six_months_ago:
+                        stale_count += 1
+                except (ValueError, TypeError):
+                    pass
+
+        return TeamStatsResponse(
+            owner=owner,
+            total_leads=total,
+            tier_distribution=dict(tier_counter),
+            stage_distribution=dict(stage_counter),
+            leads_not_enriched=total - full_count,
+            leads_worth_enrichment=worth_count,
+            leads_cold_30d=cold_count,
+            leads_stale_6m=stale_count,
+            enrichment_pct=round(full_count / total * 100, 1) if total else 0,
+            avg_potential_score=round(score_sum / score_n, 1) if score_n else 0,
+        )
+    except Exception as e:
+        print(f"[WARN] Team stats failed: {e}")
+        return TeamStatsResponse(owner=owner)
+
+
+@app.get("/api/v2/team/alerts", response_model=TeamAlertsResponse, tags=["Team"])
+async def get_team_alerts(
+    owner: str = Query(..., description="Lead owner name"),
+    api_key: str = Depends(verify_api_key),
+):
+    """Computed prospecting alerts for one SDR."""
+    from datetime import datetime, timedelta, timezone
+
+    try:
+        rows = _fetch_owner_leads(owner)
+        if not rows:
+            return TeamAlertsResponse(owner=owner)
+
+        now = datetime.now(timezone.utc)
+        thirty_days_ago = now - timedelta(days=30)
+        six_months_ago = now - timedelta(days=180)
+        alerts: list[TeamAlert] = []
+
+        # 1. Wasted effort: activity on Low-tier leads
+        wasted = [r for r in rows
+                  if r.get("potential_tier") == "Low" and (r.get("hs_activity_count") or 0) > 0]
+        if wasted:
+            alerts.append(TeamAlert(
+                alert_type="wasted_effort",
+                title="Contactando leads sin potencial",
+                severity="red" if len(wasted) > 3 else "yellow",
+                count=len(wasted),
+                description=f"Tienes actividad en {len(wasted)} leads con potencial Low. Considera redirigir tu esfuerzo a leads con mejor potencial.",
+                affected_domains=[r.get("domain", "") for r in wasted[:5]],
+            ))
+
+        # 2. Cold leads: no activity in 30+ days
+        cold = []
+        for r in rows:
+            last_act = r.get("hs_last_activity_date")
+            if last_act:
+                try:
+                    last_dt = datetime.fromisoformat(last_act.replace("Z", "+00:00"))
+                    if last_dt < thirty_days_ago:
+                        cold.append(r)
+                except (ValueError, TypeError):
+                    cold.append(r)
+            else:
+                cold.append(r)
+        if cold:
+            alerts.append(TeamAlert(
+                alert_type="cold_leads",
+                title="Leads enfriandose",
+                severity="red" if len(cold) > 5 else "yellow",
+                count=len(cold),
+                description=f"{len(cold)} leads sin actividad en los ultimos 30 dias. Estos leads se estan enfriando.",
+                affected_domains=[r.get("domain", "") for r in cold[:5]],
+            ))
+
+        # 3. Unenriched: worth enrichment but still lite
+        unenriched = [r for r in rows
+                      if r.get("worth_full_enrichment") and r.get("enrichment_type") != "full"]
+        if unenriched:
+            alerts.append(TeamAlert(
+                alert_type="unenriched",
+                title="Leads que vale enriquecer",
+                severity="yellow",
+                count=len(unenriched),
+                description=f"{len(unenriched)} leads marcados como 'vale enriquecer' aun no tienen enrichment completo.",
+                affected_domains=[r.get("domain", "") for r in unenriched[:5]],
+            ))
+
+        # 4. Stale: created >6 months, no deal
+        stale = []
+        for r in rows:
+            created = r.get("hs_lead_created_at")
+            deal_count = r.get("hubspot_deal_count") or 0
+            if created and deal_count == 0:
+                try:
+                    created_dt = datetime.fromisoformat(created.replace("Z", "+00:00"))
+                    if created_dt < six_months_ago:
+                        stale.append(r)
+                except (ValueError, TypeError):
+                    pass
+        if stale:
+            alerts.append(TeamAlert(
+                alert_type="stale_no_deal",
+                title="Leads viejos sin avance",
+                severity="red" if len(stale) > 3 else "yellow",
+                count=len(stale),
+                description=f"{len(stale)} leads creados hace mas de 6 meses sin ningun deal asociado.",
+                affected_domains=[r.get("domain", "") for r in stale[:5]],
+            ))
+
+        # 5. Effort misdirected: % of activity on Low-tier leads
+        total_activity = sum(r.get("hs_activity_count") or 0 for r in rows)
+        low_activity = sum(r.get("hs_activity_count") or 0 for r in rows if r.get("potential_tier") == "Low")
+        if total_activity > 0:
+            low_pct = low_activity / total_activity * 100
+            if low_pct > 20:
+                alerts.append(TeamAlert(
+                    alert_type="effort_misdirected",
+                    title="Esfuerzo mal dirigido",
+                    severity="red" if low_pct > 40 else "yellow",
+                    count=round(low_pct),
+                    description=f"El {round(low_pct)}% de tu actividad total esta en leads con potencial Low.",
+                    affected_domains=[],
+                ))
+
+        # Sort: red first, then yellow
+        severity_order = {"red": 0, "yellow": 1, "green": 2}
+        alerts.sort(key=lambda a: severity_order.get(a.severity, 2))
+
+        return TeamAlertsResponse(owner=owner, alerts=alerts)
+    except Exception as e:
+        print(f"[WARN] Team alerts failed: {e}")
+        return TeamAlertsResponse(owner=owner)
+
+
+@app.get("/api/v2/team/leads", response_model=TeamLeadListResponse, tags=["Team"])
+async def get_team_leads(
+    owner: str = Query(..., description="Lead owner name"),
+    page: int = Query(1, ge=1),
+    limit: int = Query(25, ge=1, le=200),
+    sort_by: str = Query("overall_potential_score", description="Sort field"),
+    api_key: str = Depends(verify_api_key),
+):
+    """Paginated lead list for a specific SDR."""
+    try:
+        rows = _fetch_owner_leads(owner)
+
+        valid_sort = {"overall_potential_score", "lite_triage_score", "ig_followers",
+                      "hs_last_activity_date", "updated_at", "hs_lead_created_at"}
+        sort_field = sort_by if sort_by in valid_sort else "overall_potential_score"
+
+        rows.sort(key=lambda r: r.get(sort_field) or "", reverse=True)
+
+        total = len(rows)
+        start = (page - 1) * limit
+        page_rows = rows[start:start + limit]
+
+        companies = [LeadListItem(**r) for r in page_rows]
+        return TeamLeadListResponse(
+            companies=companies,
+            total=total,
+            page=page,
+            limit=limit,
+        )
+    except Exception as e:
+        print(f"[WARN] Team leads failed: {e}")
+        return TeamLeadListResponse()
 
 
 @app.get("/api/v2/enrichment/companies/{domain}", tags=["Companies"])

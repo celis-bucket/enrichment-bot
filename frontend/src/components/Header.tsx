@@ -50,6 +50,16 @@ export function Header() {
               Leads
             </Link>
             <Link
+              href="/team"
+              className={`px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${
+                pathname === '/team'
+                  ? 'bg-melonn-purple text-white'
+                  : 'text-melonn-purple-light hover:text-white hover:bg-melonn-navy-light'
+              }`}
+            >
+              Mi Pipeline
+            </Link>
+            <Link
               href="/potential"
               className={`px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${
                 pathname === '/potential'

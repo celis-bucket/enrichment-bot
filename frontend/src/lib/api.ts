@@ -13,6 +13,9 @@ import type {
   TikTokWeeklyResponse,
   TikTokShopHistoryResponse,
   TikTokShopForDomainResponse,
+  TeamStatsResponse,
+  TeamAlertsResponse,
+  TeamLeadListResponse,
 } from './types';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
@@ -279,6 +282,63 @@ export async function getFeedback(domain: string): Promise<FeedbackItem[]> {
   }
 }
 
+
+// ===== Team Prospecting Panel API =====
+
+export async function getTeamMembers(): Promise<string[]> {
+  try {
+    const response = await fetch(`${API_BASE}/api/v2/team/members`, { headers: authHeaders() });
+    if (!response.ok) return [];
+    const data = await response.json();
+    return data.members || [];
+  } catch {
+    return [];
+  }
+}
+
+export async function getTeamStats(owner: string): Promise<TeamStatsResponse> {
+  const response = await fetch(
+    `${API_BASE}/api/v2/team/stats?owner=${encodeURIComponent(owner)}`,
+    { headers: authHeaders() }
+  );
+  if (!response.ok) {
+    return { owner, total_leads: 0, tier_distribution: {}, stage_distribution: {}, leads_not_enriched: 0, leads_worth_enrichment: 0, leads_cold_30d: 0, leads_stale_6m: 0, enrichment_pct: 0, avg_potential_score: 0 };
+  }
+  return response.json();
+}
+
+export async function getTeamAlerts(owner: string): Promise<TeamAlertsResponse> {
+  const response = await fetch(
+    `${API_BASE}/api/v2/team/alerts?owner=${encodeURIComponent(owner)}`,
+    { headers: authHeaders() }
+  );
+  if (!response.ok) {
+    return { owner, alerts: [] };
+  }
+  return response.json();
+}
+
+export async function getTeamLeads(params: {
+  owner: string;
+  page?: number;
+  limit?: number;
+  sort_by?: string;
+}): Promise<TeamLeadListResponse> {
+  const searchParams = new URLSearchParams();
+  searchParams.set('owner', params.owner);
+  if (params.page) searchParams.set('page', String(params.page));
+  if (params.limit) searchParams.set('limit', String(params.limit));
+  if (params.sort_by) searchParams.set('sort_by', params.sort_by);
+
+  const response = await fetch(
+    `${API_BASE}/api/v2/team/leads?${searchParams.toString()}`,
+    { headers: authHeaders() }
+  );
+  if (!response.ok) {
+    return { companies: [], total: 0, page: 1, limit: 25 };
+  }
+  return response.json();
+}
 
 // ===== TikTok Shop Dashboard API =====
 

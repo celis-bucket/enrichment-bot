@@ -1,0 +1,156 @@
+'use client';
+
+import type { LeadListItem } from '@/lib/types';
+import { PotentialTierBadge } from '@/components/PotentialTierBadge';
+
+interface TeamLeadTableProps {
+  leads: LeadListItem[];
+  sortBy: string;
+  onSortChange: (field: string) => void;
+}
+
+function formatRelativeDate(dateStr: string | null | undefined): { text: string; stale: boolean; cold: boolean } {
+  if (!dateStr) return { text: '--', stale: false, cold: false };
+  try {
+    const date = new Date(dateStr);
+    const now = new Date();
+    const days = Math.floor((now.getTime() - date.getTime()) / (1000 * 60 * 60 * 24));
+    if (days === 0) return { text: 'hoy', stale: false, cold: false };
+    if (days === 1) return { text: 'ayer', stale: false, cold: false };
+    if (days < 30) return { text: `hace ${days}d`, stale: false, cold: false };
+    if (days < 180) return { text: `hace ${days}d`, stale: false, cold: true };
+    return { text: `hace ${days}d`, stale: true, cold: true };
+  } catch {
+    return { text: '--', stale: false, cold: false };
+  }
+}
+
+function formatNumber(n: number | null | undefined): string {
+  if (n == null) return '--';
+  if (n >= 1000000) return `${(n / 1000000).toFixed(1)}M`;
+  if (n >= 1000) return `${(n / 1000).toFixed(1)}K`;
+  return String(n);
+}
+
+function EnrichmentBadge({ type }: { type: string | null | undefined }) {
+  if (!type) return <span className="text-gray-400 text-xs">--</span>;
+  const isFull = type === 'full';
+  return (
+    <span className={`px-2 py-0.5 rounded text-xs font-medium ${
+      isFull ? 'bg-melonn-green-50 text-melonn-green' : 'bg-gray-100 text-gray-500'
+    }`}>
+      {isFull ? 'Full' : 'Lite'}
+    </span>
+  );
+}
+
+function StageBadge({ stage }: { stage: string | null | undefined }) {
+  if (!stage) return <span className="text-gray-400 text-xs">--</span>;
+  return (
+    <span className="px-2 py-0.5 rounded text-xs font-medium bg-blue-50 text-blue-600 whitespace-nowrap">
+      {stage}
+    </span>
+  );
+}
+
+const SORT_OPTIONS = [
+  { value: 'overall_potential_score', label: 'Potencial' },
+  { value: 'ig_followers', label: 'IG Seguidores' },
+  { value: 'hs_last_activity_date', label: 'Ult. Actividad' },
+  { value: 'hs_lead_created_at', label: 'Creado' },
+  { value: 'updated_at', label: 'Actualizado' },
+];
+
+export function TeamLeadTable({ leads, sortBy, onSortChange }: TeamLeadTableProps) {
+  return (
+    <div className="bg-white rounded-xl shadow-sm overflow-hidden">
+      <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100">
+        <h3 className="text-sm font-semibold text-gray-700 uppercase tracking-wide">
+          Mis Leads ({leads.length})
+        </h3>
+        <select
+          value={sortBy}
+          onChange={(e) => onSortChange(e.target.value)}
+          className="text-xs border border-gray-200 rounded px-2 py-1 bg-white text-gray-600"
+        >
+          {SORT_OPTIONS.map((opt) => (
+            <option key={opt.value} value={opt.value}>{opt.label}</option>
+          ))}
+        </select>
+      </div>
+      <div className="overflow-x-auto">
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="bg-gray-50 text-xs text-gray-500 uppercase">
+              <th className="text-left px-4 py-2 font-medium">Empresa</th>
+              <th className="text-left px-3 py-2 font-medium">Potencial</th>
+              <th className="text-right px-3 py-2 font-medium">IG</th>
+              <th className="text-left px-3 py-2 font-medium">Stage</th>
+              <th className="text-left px-3 py-2 font-medium">Ult. Actividad</th>
+              <th className="text-left px-3 py-2 font-medium">Creado</th>
+              <th className="text-left px-3 py-2 font-medium">Enrich</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-gray-50">
+            {leads.map((lead) => {
+              const activity = formatRelativeDate(lead.hs_last_activity_date);
+              const created = formatRelativeDate(lead.hs_lead_created_at);
+              return (
+                <tr key={lead.domain || lead.id} className="hover:bg-gray-50 transition-colors">
+                  <td className="px-4 py-2.5">
+                    <div>
+                      <p className="font-medium text-gray-900 truncate max-w-[200px]">
+                        {lead.company_name || lead.domain}
+                      </p>
+                      {lead.domain && (
+                        <a
+                          href={`https://${lead.domain}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-xs text-melonn-purple hover:underline"
+                        >
+                          {lead.domain}
+                        </a>
+                      )}
+                    </div>
+                  </td>
+                  <td className="px-3 py-2.5">
+                    <PotentialTierBadge tier={lead.potential_tier} />
+                  </td>
+                  <td className="px-3 py-2.5 text-right text-gray-600">
+                    {formatNumber(lead.ig_followers)}
+                  </td>
+                  <td className="px-3 py-2.5">
+                    <StageBadge stage={lead.hs_lead_stage} />
+                  </td>
+                  <td className="px-3 py-2.5">
+                    <span className={`text-xs ${
+                      activity.cold ? (activity.stale ? 'text-red-500 font-semibold' : 'text-melonn-orange font-medium') : 'text-gray-500'
+                    }`}>
+                      {activity.text}
+                    </span>
+                  </td>
+                  <td className="px-3 py-2.5">
+                    <span className={`text-xs ${created.stale ? 'text-red-500 font-semibold' : 'text-gray-500'}`}>
+                      {created.text}
+                    </span>
+                  </td>
+                  <td className="px-3 py-2.5">
+                    <EnrichmentBadge type={lead.enrichment_type} />
+                  </td>
+                </tr>
+              );
+            })}
+            {leads.length === 0 && (
+              <tr>
+                <td colSpan={7} className="px-4 py-8 text-center text-gray-400 text-sm">
+                  No hay leads asignados.
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
