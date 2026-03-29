@@ -62,6 +62,73 @@ const SORT_OPTIONS = [
   { value: 'updated_at', label: 'Actualizado' },
 ];
 
+// --- Mobile card view ---
+function LeadCard({ lead, onEnrich }: { lead: LeadListItem; onEnrich: (domain: string, geography: string) => void }) {
+  const activity = formatRelativeDate(lead.hs_last_activity_date);
+  const created = formatRelativeDate(lead.hs_lead_created_at);
+
+  return (
+    <div className="bg-white border border-gray-100 rounded-lg p-3 space-y-2">
+      {/* Row 1: Name + Potential */}
+      <div className="flex items-start justify-between gap-2">
+        <div className="min-w-0 flex-1">
+          <p className="font-medium text-gray-900 text-sm truncate">
+            {lead.company_name || lead.domain}
+          </p>
+          {lead.domain && (
+            <a
+              href={`https://${lead.domain}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-xs text-melonn-purple hover:underline"
+            >
+              {lead.domain}
+            </a>
+          )}
+        </div>
+        <PotentialTierBadge tier={lead.potential_tier} />
+      </div>
+
+      {/* Row 2: Metrics grid */}
+      <div className="grid grid-cols-3 gap-2 text-xs">
+        <div>
+          <span className="text-gray-400">IG</span>
+          <p className="text-gray-700 font-medium">{formatNumber(lead.ig_followers)}</p>
+        </div>
+        <div>
+          <span className="text-gray-400">Stage</span>
+          <div className="mt-0.5"><StageBadge stage={lead.hs_lead_stage} /></div>
+        </div>
+        <div>
+          <span className="text-gray-400">Enrich</span>
+          <div className="mt-0.5"><EnrichmentBadge type={lead.enrichment_type} /></div>
+        </div>
+      </div>
+
+      {/* Row 3: Dates + Enrich button */}
+      <div className="flex items-center justify-between text-xs">
+        <div className="flex gap-3">
+          <span className={activity.cold ? (activity.stale ? 'text-red-500 font-semibold' : 'text-melonn-orange font-medium') : 'text-gray-500'}>
+            Act: {activity.text}
+          </span>
+          <span className={created.stale ? 'text-red-500 font-semibold' : 'text-gray-400'}>
+            Creado: {created.text}
+          </span>
+        </div>
+        {lead.enrichment_type !== 'full' && lead.domain && (
+          <button
+            onClick={() => onEnrich(lead.domain!, lead.geography || 'COL')}
+            className="px-3 py-1 rounded-md bg-melonn-purple text-white text-xs font-medium
+                       hover:bg-melonn-purple/90 transition-colors whitespace-nowrap"
+          >
+            Enrich
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
+
 export function TeamLeadTable({ leads, sortBy, onSortChange, onEnrich }: TeamLeadTableProps) {
   return (
     <div className="bg-white rounded-xl shadow-sm overflow-hidden">
@@ -79,7 +146,19 @@ export function TeamLeadTable({ leads, sortBy, onSortChange, onEnrich }: TeamLea
           ))}
         </select>
       </div>
-      <div className="overflow-x-auto">
+
+      {/* Mobile: Card layout */}
+      <div className="md:hidden p-3 space-y-2">
+        {leads.map((lead) => (
+          <LeadCard key={lead.domain || lead.id} lead={lead} onEnrich={onEnrich} />
+        ))}
+        {leads.length === 0 && (
+          <p className="text-center text-gray-400 text-sm py-8">No hay leads asignados.</p>
+        )}
+      </div>
+
+      {/* Desktop: Table layout */}
+      <div className="hidden md:block overflow-x-auto">
         <table className="w-full text-sm">
           <thead>
             <tr className="bg-gray-50 text-xs text-gray-500 uppercase">

@@ -11,9 +11,9 @@ export function TeamSelector({ members, value, onChange }: TeamSelectorProps) {
     <select
       value={value}
       onChange={(e) => onChange(e.target.value)}
-      className="px-4 py-2 rounded-lg border border-gray-200 bg-white text-sm font-medium
+      className="w-full sm:w-auto px-4 py-2.5 sm:py-2 rounded-lg border border-gray-200 bg-white text-sm font-medium
                  text-gray-700 shadow-sm focus:outline-none focus:ring-2 focus:ring-melonn-purple
-                 focus:border-melonn-purple min-w-[220px]"
+                 focus:border-melonn-purple sm:min-w-[220px]"
     >
       <option value="">Selecciona tu nombre</option>
       {members.map((m) => (

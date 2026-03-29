@@ -39,13 +39,14 @@ export function PotentialDistribution({ distribution }: PotentialDistributionPro
         })}
       </div>
       {/* Legend */}
-      <div className="flex justify-between text-xs text-gray-500">
+      <div className="flex flex-wrap justify-between gap-1 text-xs text-gray-500">
         {TIER_CONFIG.map(({ key, label, color }) => {
           const count = distribution[key] || 0;
           return (
             <div key={key} className="flex items-center gap-1">
-              <span className={`w-2 h-2 rounded-full ${color}`} />
-              <span>{label}</span>
+              <span className={`w-2 h-2 rounded-full shrink-0 ${color}`} />
+              <span className="hidden sm:inline">{label}</span>
+              <span className="sm:hidden">{label.slice(0, 3)}</span>
               <span className="font-semibold text-gray-700">{count}</span>
             </div>
           );
