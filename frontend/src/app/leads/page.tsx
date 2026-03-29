@@ -533,6 +533,7 @@ export default function LeadsPage() {
   const [enrichmentType, setEnrichmentType] = useState('');
   const [leadStage, setLeadStage] = useState('');
   const [owner, setOwner] = useState('');
+  const [potentialTier, setPotentialTier] = useState('');
   const [sortBy, setSortBy] = useState('lite_triage_score');
   const [isLoading, setIsLoading] = useState(true);
   const [selectedDomain, setSelectedDomain] = useState<string | null>(null);
@@ -555,6 +556,9 @@ export default function LeadsPage() {
       if (owner) {
         filtered = filtered.filter(l => (l.hs_lead_owner || '') === owner);
       }
+      if (potentialTier) {
+        filtered = filtered.filter(l => (l.potential_tier || '') === potentialTier);
+      }
       setLeads(filtered);
       setTotal(filtered.length);
       setWorthFullCount(filtered.filter(l => l.worth_full_enrichment).length);
@@ -564,7 +568,7 @@ export default function LeadsPage() {
     } finally {
       setIsLoading(false);
     }
-  }, [search, worthEnrich, enrichmentType, leadStage, owner, sortBy]);
+  }, [search, worthEnrich, enrichmentType, leadStage, owner, potentialTier, sortBy]);
 
   useEffect(() => { fetchLeads(); }, [fetchLeads]);
 
@@ -653,6 +657,13 @@ export default function LeadsPage() {
             { value: 'Rogers Belandria', label: 'Rogers Belandria' },
             { value: 'Yeraldine Prieto', label: 'Yeraldine Prieto' },
             { value: 'Esteban Sanchez', label: 'Esteban Sanchez' },
+          ]} />
+          <FilterSelect label="Potencial" value={potentialTier} onChange={setPotentialTier} options={[
+            { value: '', label: 'Potencial: Todos' },
+            { value: 'Extraordinary', label: 'Extraordinary' },
+            { value: 'Very Good', label: 'Very Good' },
+            { value: 'Good', label: 'Good' },
+            { value: 'Low', label: 'Low' },
           ]} />
           <FilterSelect label="Ordenar" value={sortBy} onChange={setSortBy} options={[
             { value: 'lite_triage_score', label: 'Score' },
