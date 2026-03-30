@@ -467,7 +467,7 @@ def write_tiktok_weekly_data(
             "gmv": shop.get("gmv"),
             "products": int(shop["products"]) if shop.get("products") is not None else None,
             "influencers": int(shop["influencers"]) if shop.get("influencers") is not None else None,
-            "fastmoss_url": shop.get("fastmoss_url"),
+            "fastmoss_url": (shop.get("fastmoss_url") or "").replace("/zh/", "/en/") or None,
             "week_start": week_start,
             "matched_domain": match_lookup.get(shop_name),
             "updated_at": datetime.now(timezone.utc).isoformat(),
