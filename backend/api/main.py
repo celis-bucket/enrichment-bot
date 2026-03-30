@@ -621,8 +621,8 @@ async def list_leads(
         columns = (
             "id,domain,clean_url,company_name,platform,geography,"
             "ig_followers,ig_size_score,lite_triage_score,worth_full_enrichment,"
-            "enrichment_type,hubspot_company_id,hubspot_deal_stage,hubspot_deal_count,"
-            "hs_lead_stage,hs_lead_label,hs_lead_owner,hs_last_lost_deal_date,hs_lead_created_at,"
+            "enrichment_type,hubspot_company_id,hubspot_company_url,hubspot_deal_stage,hubspot_deal_count,"
+            "source,hs_lead_stage,hs_lead_label,hs_lead_owner,hs_last_lost_deal_date,hs_lead_created_at,"
             "hs_last_activity_date,hs_activity_count,hs_open_tasks_count,"
             "overall_potential_score,potential_tier,predicted_orders_p90,"
             "has_distributors,has_own_stores,has_multibrand_stores,multibrand_store_names,"
@@ -722,8 +722,8 @@ _TEAM_EXCLUDE_STAGES = {"cierre ganado", "consideracion", "parametrización", "o
 _TEAM_COLUMNS = (
     "id,domain,clean_url,company_name,platform,geography,"
     "ig_followers,ig_size_score,lite_triage_score,worth_full_enrichment,"
-    "enrichment_type,hubspot_company_id,hubspot_deal_stage,hubspot_deal_count,"
-    "hs_lead_stage,hs_lead_label,hs_lead_owner,hs_last_lost_deal_date,hs_lead_created_at,"
+    "enrichment_type,hubspot_company_id,hubspot_company_url,hubspot_deal_stage,hubspot_deal_count,"
+    "source,hs_lead_stage,hs_lead_label,hs_lead_owner,hs_last_lost_deal_date,hs_lead_created_at,"
     "hs_last_activity_date,hs_activity_count,hs_open_tasks_count,"
     "overall_potential_score,potential_tier,predicted_orders_p90,"
     "has_distributors,has_own_stores,has_multibrand_stores,multibrand_store_names,"

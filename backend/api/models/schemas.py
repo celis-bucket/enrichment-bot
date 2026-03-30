@@ -197,8 +197,10 @@ class LeadListItem(BaseModel):
     worth_full_enrichment: Optional[bool] = None
     enrichment_type: Optional[str] = None
     hubspot_company_id: Optional[str] = None
+    hubspot_company_url: Optional[str] = None
     hubspot_deal_stage: Optional[str] = None
     hubspot_deal_count: Optional[int] = None
+    source: Optional[str] = None
     hs_lead_stage: Optional[str] = None
     hs_lead_label: Optional[str] = None
     hs_lead_owner: Optional[str] = None

@@ -177,8 +177,10 @@ export interface LeadListItem {
   worth_full_enrichment?: boolean | null;
   enrichment_type?: string | null;
   hubspot_company_id?: string | null;
+  hubspot_company_url?: string | null;
   hubspot_deal_stage?: string | null;
   hubspot_deal_count?: number | null;
+  source?: string | null;
   hs_lead_stage?: string | null;
   hs_lead_label?: string | null;
   hs_lead_owner?: string | null;
