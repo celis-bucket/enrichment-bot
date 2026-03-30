@@ -733,6 +733,19 @@ _TEAM_COLUMNS = (
 )
 
 
+def _parse_date(value: str | None) -> "datetime | None":
+    """Parse a date string from Supabase (date-only or full ISO) into a naive UTC datetime."""
+    if not value:
+        return None
+    from datetime import datetime, date
+    try:
+        dt = datetime.fromisoformat(value.replace("Z", "+00:00"))
+        # Strip timezone to compare with naive 'now' consistently
+        return dt.replace(tzinfo=None)
+    except (ValueError, TypeError):
+        return None
+
+
 def _fetch_owner_leads(owner: str) -> list[dict]:
     """Fetch all leads for a specific owner, excluding won/active deals."""
     client = supabase_client or get_supabase_client()
@@ -779,7 +792,7 @@ async def get_team_stats(
         if total == 0:
             return TeamStatsResponse(owner=owner)
 
-        now = datetime.now(timezone.utc)
+        now = datetime.now(timezone.utc).replace(tzinfo=None)
         thirty_days_ago = now - timedelta(days=30)
         six_months_ago = now - timedelta(days=180)
 
@@ -809,27 +822,19 @@ async def get_team_stats(
                 score_n += 1
 
             # Cold: no activity in 30+ days
-            last_act = r.get("hs_last_activity_date")
-            if last_act:
-                try:
-                    last_dt = datetime.fromisoformat(last_act.replace("Z", "+00:00"))
-                    if last_dt < thirty_days_ago:
-                        cold_count += 1
-                except (ValueError, TypeError):
+            last_dt = _parse_date(r.get("hs_last_activity_date"))
+            if last_dt:
+                if last_dt < thirty_days_ago:
                     cold_count += 1
             else:
-                cold_count += 1
+                cold_count += 1  # No date = never contacted
 
             # Stale: created >6 months ago with no deal
-            created = r.get("hs_lead_created_at")
+            created_dt = _parse_date(r.get("hs_lead_created_at"))
             deal_count = r.get("hubspot_deal_count") or 0
-            if created and deal_count == 0:
-                try:
-                    created_dt = datetime.fromisoformat(created.replace("Z", "+00:00"))
-                    if created_dt < six_months_ago:
-                        stale_count += 1
-                except (ValueError, TypeError):
-                    pass
+            if created_dt and deal_count == 0:
+                if created_dt < six_months_ago:
+                    stale_count += 1
 
         return TeamStatsResponse(
             owner=owner,
@@ -861,7 +866,7 @@ async def get_team_alerts(
         if not rows:
             return TeamAlertsResponse(owner=owner)
 
-        now = datetime.now(timezone.utc)
+        now = datetime.now(timezone.utc).replace(tzinfo=None)
         thirty_days_ago = now - timedelta(days=30)
         six_months_ago = now - timedelta(days=180)
         alerts: list[TeamAlert] = []
@@ -882,16 +887,12 @@ async def get_team_alerts(
         # 2. Cold leads: no activity in 30+ days
         cold = []
         for r in rows:
-            last_act = r.get("hs_last_activity_date")
-            if last_act:
-                try:
-                    last_dt = datetime.fromisoformat(last_act.replace("Z", "+00:00"))
-                    if last_dt < thirty_days_ago:
-                        cold.append(r)
-                except (ValueError, TypeError):
+            last_dt = _parse_date(r.get("hs_last_activity_date"))
+            if last_dt:
+                if last_dt < thirty_days_ago:
                     cold.append(r)
             else:
-                cold.append(r)
+                cold.append(r)  # No date = never contacted
         if cold:
             alerts.append(TeamAlert(
                 alert_type="cold_leads",
@@ -918,15 +919,11 @@ async def get_team_alerts(
         # 4. Stale: created >6 months, no deal
         stale = []
         for r in rows:
-            created = r.get("hs_lead_created_at")
+            created_dt = _parse_date(r.get("hs_lead_created_at"))
             deal_count = r.get("hubspot_deal_count") or 0
-            if created and deal_count == 0:
-                try:
-                    created_dt = datetime.fromisoformat(created.replace("Z", "+00:00"))
-                    if created_dt < six_months_ago:
-                        stale.append(r)
-                except (ValueError, TypeError):
-                    pass
+            if created_dt and deal_count == 0:
+                if created_dt < six_months_ago:
+                    stale.append(r)
         if stale:
             alerts.append(TeamAlert(
                 alert_type="stale_no_deal",
