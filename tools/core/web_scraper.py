@@ -99,11 +99,16 @@ def scrape_website(
         if 'User-Agent' not in headers:
             headers['User-Agent'] = random.choice(USER_AGENTS)
 
-        # Add accept headers
+        # Add accept headers and browser-like Sec-Fetch headers to avoid WAF blocks
         # Note: Avoid Accept-Encoding with br (brotli) as some sites return obfuscated content
         headers.setdefault('Accept', 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8')
-        headers.setdefault('Accept-Language', 'en-US,en;q=0.9,es;q=0.8')
+        headers.setdefault('Accept-Language', 'es-CO,es;q=0.9,en-US;q=0.8,en;q=0.7')
         headers.setdefault('Connection', 'keep-alive')
+        headers.setdefault('Upgrade-Insecure-Requests', '1')
+        headers.setdefault('Sec-Fetch-Dest', 'document')
+        headers.setdefault('Sec-Fetch-Mode', 'navigate')
+        headers.setdefault('Sec-Fetch-Site', 'none')
+        headers.setdefault('Sec-Fetch-User', '?1')
 
         # Make request
         response = session.get(
