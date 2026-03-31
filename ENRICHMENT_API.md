@@ -25,7 +25,7 @@ Authorization: Bearer <ENRICHMENT_API_KEY>
 
 **`POST /api/v2/enrichment/analyze-stream`**
 
-Takes a URL or domain and runs the full enrichment pipeline (~20-60 seconds). Returns real-time progress events via Server-Sent Events (SSE), ending with the full result.
+Takes a URL or domain and runs the full enrichment pipeline (~15-30 seconds cold, ~2-5 seconds if cached). Returns real-time progress events via Server-Sent Events (SSE), ending with the full result. Steps run in parallel where possible.
 
 **Request:**
 ```json
@@ -137,11 +137,13 @@ interface EnrichmentResult {
   category_confidence: number | null;
   category_evidence: string | null;
 
-  // Instagram
+  // Social media
   instagram_url: string | null;      // "https://instagram.com/thehairgeneration"
   ig_followers: number | null;       // 379917
   ig_size_score: number | null;      // 0-100 scale
   ig_health_score: number | null;    // 0-100 scale
+  fb_followers: number | null;       // Facebook page followers
+  tiktok_followers: number | null;   // TikTok profile followers (MEX only)
 
   // Company info (from Apollo.io)
   company_linkedin: string | null;
@@ -187,14 +189,14 @@ interface EnrichmentResult {
   own_store_count_mex: number | null;     // Store count in Mexico
   has_multibrand_stores: boolean | null;  // Brand sold in department stores
   multibrand_store_names: string[];       // ["Liverpool", "Walmart", ...]
-  on_mercadolibre: boolean | null;
-  on_amazon: boolean | null;
+  on_mercadolibre: boolean | null;        // COL + MEX
+  on_amazon: boolean | null;              // MEX only (not available in COL)
   on_rappi: boolean | null;              // COL only
   on_walmart: boolean | null;            // MEX only
   on_liverpool: boolean | null;          // MEX only
   on_coppel: boolean | null;             // MEX only
   on_tiktok_shop: boolean | null;        // MEX only
-  marketplace_names: string[];           // ["MercadoLibre", "Amazon", ...]
+  marketplace_names: string[];           // ["MercadoLibre", "Rappi", ...]
   retail_confidence: number | null;      // 0.0 - 1.0
 
   // Orders prediction
@@ -214,10 +216,23 @@ interface EnrichmentResult {
   potential_tier: string | null;          // "Extraordinary", "Very Good", "Good", "Low"
 
   // Execution metadata
+  enrichment_type: string | null;       // "full" or "lite"
   tool_coverage_pct: number | null;
   total_runtime_sec: number | null;
   cost_estimate_usd: number | null;
   workflow_log: WorkflowStep[];
+  updated_at: string | null;            // ISO 8601 timestamp
+
+  // Lead fields (present when source=hubspot_leads)
+  lite_triage_score: number | null;     // 0-100, lite enrichment score
+  worth_full_enrichment: boolean | null;
+  hs_lead_stage: string | null;        // "Nuevo", "Enrichment", "Conectado", etc.
+  hs_lead_label: string | null;
+  hs_lead_owner: string | null;
+  hs_lead_created_at: string | null;
+  hs_last_activity_date: string | null;
+  hs_activity_count: number | null;
+  hs_open_tasks_count: number | null;
 }
 
 interface ApolloContact {
@@ -245,7 +260,7 @@ interface WorkflowStep {
 When a lead comes in with a website URL, call the streaming endpoint and wait for the result:
 
 ```typescript
-async function enrichLead(url: string): Promise<EnrichmentResult> {
+async function enrichLead(url: string, geography: "COL" | "MEX"): Promise<EnrichmentResult> {
   const response = await fetch(
     `${process.env.ENRICHMENT_API_URL}/api/v2/enrichment/analyze-stream`,
     {
@@ -254,7 +269,7 @@ async function enrichLead(url: string): Promise<EnrichmentResult> {
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${process.env.ENRICHMENT_API_KEY}`,
       },
-      body: JSON.stringify({ url }),
+      body: JSON.stringify({ url, geography }),
     }
   );
 
@@ -284,7 +299,7 @@ async function enrichLead(url: string): Promise<EnrichmentResult> {
 ### Pattern B: Check cache first, then enrich
 
 ```typescript
-async function getOrEnrichCompany(domain: string): Promise<EnrichmentResult> {
+async function getOrEnrichCompany(domain: string, geography: "COL" | "MEX"): Promise<EnrichmentResult> {
   const headers = { 'Authorization': `Bearer ${process.env.ENRICHMENT_API_KEY}` };
 
   // Check if already enriched
@@ -304,7 +319,7 @@ async function getOrEnrichCompany(domain: string): Promise<EnrichmentResult> {
   }
 
   // Run fresh enrichment
-  return enrichLead(domain);
+  return enrichLead(domain, geography);
 }
 ```
 
@@ -333,7 +348,12 @@ async function getOrEnrichCompany(domain: string): Promise<EnrichmentResult> {
 
 ## Notes
 
-- Each enrichment takes 20-60 seconds and costs ~$0.05 USD in API credits
+- Each enrichment takes ~15-30 seconds (cold) or ~2-5 seconds (cached) and costs ~$0.05 USD in API credits
+- The pipeline runs 14 steps in parallel using ThreadPoolExecutor, coordinated by dependency events
 - Results are cached in the database — use `check-duplicate` or `GET /companies/{domain}` to avoid re-running
+- The `geography` field is required and determines which marketplaces are evaluated:
+  - **COL**: MercadoLibre, Rappi
+  - **MEX**: MercadoLibre, Amazon, Walmart, Liverpool, Coppel, TikTok Shop
 - The API processes one enrichment at a time per domain
+- If a domain doesn't respond, the pipeline automatically tries the `www.` variant (and vice versa)
 - Interactive API docs available at: `${ENRICHMENT_API_URL}/docs`
