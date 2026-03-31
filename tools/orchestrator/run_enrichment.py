@@ -265,7 +265,23 @@ def run_enrichment(
             _step("scrape", "ok", ms, f"cached, {len(html) // 1024}KB")
             _inc_succeeded()
         else:
-            scrape_result = scrape_website(result.clean_url, timeout=60)
+            scrape_result = scrape_website(result.clean_url, timeout=30)
+            if not scrape_result["success"] and domain:
+                # Fallback: try www. prefix or remove it
+                from urllib.parse import urlparse
+                parsed = urlparse(result.clean_url)
+                host = parsed.hostname or ""
+                if host.startswith("www."):
+                    alt_url = result.clean_url.replace("://www.", "://", 1)
+                else:
+                    alt_url = result.clean_url.replace("://", "://www.", 1)
+                alt_result = scrape_website(alt_url, timeout=30, max_retries=1)
+                if alt_result["success"]:
+                    scrape_result = alt_result
+                    result.clean_url = alt_result["data"].get("url", alt_url)
+                    domain = extract_domain(result.clean_url)
+                    result.domain = domain
+
             ms = int((time.time() - t0) * 1000)
             if scrape_result["success"]:
                 html = scrape_result["data"]["html"]
