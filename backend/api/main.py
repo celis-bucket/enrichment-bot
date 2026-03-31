@@ -1100,6 +1100,17 @@ async def get_company(domain: str, api_key: str = Depends(verify_api_key)):
             "cost_estimate_usd": row.get("cost_estimate_usd"),
             "workflow_log": row.get("workflow_execution_log") or [],
             "updated_at": row.get("updated_at"),
+            # Lead / lite fields
+            "enrichment_type": row.get("enrichment_type"),
+            "lite_triage_score": row.get("lite_triage_score"),
+            "worth_full_enrichment": row.get("worth_full_enrichment"),
+            "hs_lead_stage": row.get("hs_lead_stage"),
+            "hs_lead_label": row.get("hs_lead_label"),
+            "hs_lead_owner": row.get("hs_lead_owner"),
+            "hs_lead_created_at": row.get("hs_lead_created_at"),
+            "hs_last_activity_date": row.get("hs_last_activity_date"),
+            "hs_activity_count": row.get("hs_activity_count"),
+            "hs_open_tasks_count": row.get("hs_open_tasks_count"),
         }
     except HTTPException:
         raise

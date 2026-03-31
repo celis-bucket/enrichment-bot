@@ -187,22 +187,40 @@ function DetailDrawer({ domain, onClose, onEnrich }: { domain: string; onClose: 
             <p className="text-sm text-red-400 text-center py-12">No se encontro informacion.</p>
           ) : (
             <>
-              <Section title="Triage Score">
-                <Row label="Lite Score" value={<ScoreBar score={(data as unknown as LeadListItem).lite_triage_score} />} />
-                <Row label="Plataforma" value={data.platform} />
-                <Row label="Pais" value={data.geography} />
-                <Row label="Categoria" value={data.category} />
-                <Row label="Enrichment" value={(data as unknown as LeadListItem).enrichment_type || 'lite'} />
-              </Section>
+              {(() => {
+                const d = data as unknown as Record<string, string | number | null>;
+                const enrichType = (d.enrichment_type as string) || 'lite';
+                const isFull = enrichType === 'full';
+                return (
+                  <>
+                    <Section title="Info General">
+                      <Row label="Tipo enrichment" value={
+                        <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${isFull ? 'bg-melonn-green-50 text-melonn-green' : 'bg-gray-100 text-gray-500'}`}>
+                          {enrichType}
+                        </span>
+                      } />
+                      <Row label="Plataforma" value={data.platform} />
+                      <Row label="Pais" value={data.geography} />
+                      <Row label="Categoria" value={data.category} />
+                      {d.hs_lead_stage && <Row label="Lead Stage" value={d.hs_lead_stage as string} />}
+                      {d.hs_lead_owner && <Row label="Responsable" value={d.hs_lead_owner as string} />}
+                      {d.hs_lead_created_at && <Row label="Lead creado" value={(d.hs_lead_created_at as string).slice(0, 10)} />}
+                      {d.hs_last_activity_date && <Row label="Ult. actividad" value={(d.hs_last_activity_date as string).slice(0, 10)} />}
+                      {d.lite_triage_score != null && <Row label="Lite Score" value={<ScoreBar score={d.lite_triage_score as number} />} />}
+                    </Section>
 
-              {data.overall_potential_score != null && (
-                <Section title="Potential Score">
-                  <Row label="Overall" value={<ScoreBar score={data.overall_potential_score} />} />
-                  <Row label="Tier" value={<PotentialTierBadge tier={data.potential_tier} />} />
-                  <Row label="E-commerce Size" value={<ScoreBar score={data.ecommerce_size_score} />} />
-                  <Row label="Fit" value={<ScoreBar score={data.fit_score} />} />
-                </Section>
-              )}
+                    {data.overall_potential_score != null && (
+                      <Section title="Potential Score">
+                        <Row label="Overall" value={<ScoreBar score={data.overall_potential_score} />} />
+                        <Row label="Tier" value={<PotentialTierBadge tier={data.potential_tier} />} />
+                        <Row label="E-commerce Size" value={<ScoreBar score={data.ecommerce_size_score} />} />
+                        <Row label="Retail Size" value={<ScoreBar score={data.retail_size_score} />} />
+                        <Row label="Fit" value={<ScoreBar score={data.fit_score} />} />
+                      </Section>
+                    )}
+                  </>
+                );
+              })()}
 
               <Section title="Redes Sociales">
                 <Row label="IG Seguidores" value={fmt(data.ig_followers)} />
