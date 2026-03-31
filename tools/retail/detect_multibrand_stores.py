@@ -107,7 +107,7 @@ def _extract_store_names_from_page(
     Returns:
         List of canonical store names found
     """
-    result = scrape_website(url, timeout=20, parse_html=True)
+    result = scrape_website(url, timeout=8, max_retries=1, parse_html=True)
     if not result["success"]:
         return []
 
@@ -283,19 +283,14 @@ def detect_multibrand_stores(
         # Source A2: Fallback — try common "where to buy" URLs directly.
         # Many Shopify/VTEX sites have JS-rendered navigation, so the link
         # to the retailer page may not appear in static HTML.
-        if not all_stores and not candidates:
+        # Skip if we already have stores from Google Shopping or other sources.
+        if not all_stores and not candidates and not shopping_sellers:
             COMMON_RETAILER_PATHS = [
                 "/pages/donde-comprar",
                 "/pages/puntos-de-venta",
-                "/pages/tiendas",
-                "/pages/tiendas-autorizadas",
                 "/donde-comprar",
                 "/puntos-de-venta",
-                "/tiendas-autorizadas",
-                "/pages/encuentranos",
-                "/pages/retailers",
-                "/pages/where-to-buy",
-                "/pages/find-us",
+                "/pages/tiendas-autorizadas",
             ]
             for path in COMMON_RETAILER_PATHS:
                 page_url = urljoin(base_url, path)
