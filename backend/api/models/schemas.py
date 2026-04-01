@@ -404,6 +404,11 @@ class TeamLeadListResponse(BaseModel):
     limit: int = 25
 
 
+class SpicedDataRequest(BaseModel):
+    """Request model for saving SPICED diagnostic form data"""
+    spiced_data: dict = Field(..., description="Full form data as JSON object")
+
+
 class HubSpotDetailResponse(BaseModel):
     """Extended HubSpot company detail for the history modal"""
     company_name: str = ""

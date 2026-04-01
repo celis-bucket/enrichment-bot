@@ -111,6 +111,8 @@ export interface EnrichmentV2Results {
   fit_score?: number | null;
   overall_potential_score?: number | null;
   potential_tier?: string | null;
+  // SPICED diagnostic saved data
+  spiced_data?: Record<string, unknown> | null;
   // Execution meta
   tool_coverage_pct?: number | null;
   total_runtime_sec?: number | null;

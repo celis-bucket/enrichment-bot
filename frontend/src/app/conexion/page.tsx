@@ -1,9 +1,9 @@
 'use client';
 
-import { Suspense, useEffect, useState, useRef, useCallback } from 'react';
+import { Suspense, useEffect, useState, useRef } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { Header } from '@/components/Header';
-import { getCompany } from '@/lib/api';
+import { getCompany, saveSpicedData } from '@/lib/api';
 import type { EnrichmentV2Results } from '@/lib/types';
 
 const FORM_STYLES = `
@@ -303,77 +303,102 @@ function checkCheckbox(className: string, value: string) {
   });
 }
 
-function setSelectByPartial(id: string, partial: string) {
-  const el = document.getElementById(id) as HTMLSelectElement | null;
-  if (!el || !partial) return;
-  const lower = partial.toLowerCase();
-  for (let i = 0; i < el.options.length; i++) {
-    if (el.options[i].value.toLowerCase().includes(lower) ||
-        el.options[i].text.toLowerCase().includes(lower)) {
-      el.selectedIndex = i;
-      return;
-    }
-  }
-}
-
 function prefillFromEnrichment(data: EnrichmentV2Results) {
-  // Company name / brand
+  // BDR = read from localStorage (set by team page)
+  const bdr = localStorage.getItem('team_selected_owner');
+  if (bdr) setVal('bdr', bdr);
+
+  // Brand = company_name
   setVal('brand', data.company_name);
 
-  // Today's date as connection date
+  // Date = today
   const today = new Date().toISOString().split('T')[0];
   setVal('conn_date', today);
 
   // HubSpot link
-  if (data.hubspot_company_url) {
-    setVal('hubspot_link', data.hubspot_company_url);
-  }
+  if (data.hubspot_company_url) setVal('hubspot_link', data.hubspot_company_url);
 
-  // Contact info (from Apollo)
-  if (data.contact_name) setVal('seller', data.contact_name);
-  if (data.contact_email) setVal('seller_email', data.contact_email);
-
-  // Category as product description
-  if (data.category) setVal('product_desc', data.category);
-
-  // Platform -> CRM select
-  if (data.platform) {
-    setSelectByPartial('crm_type', data.platform);
-  }
-
-  // Ticket promedio (avg_price)
-  if (data.avg_price) setVal('ticket', Math.round(data.avg_price));
-
-  // Physical stores
-  if (data.has_own_stores != null) {
-    setVal('physical_stores', data.has_own_stores ? 'Si' : 'No');
-  }
-
-  // Orders estimation -> D2C vol (use p50 as best estimate)
-  if (data.prediction?.predicted_orders_p50) {
-    setVal('d2c_vol', data.prediction.predicted_orders_p50);
-    // Estimate daily
-    const daily = Math.round(data.prediction.predicted_orders_p50 / 30);
-    if (daily > 0) setVal('daily_vol', daily);
-  }
-  // vol_normal with p50, vol_peak with p90
-  if (data.prediction?.predicted_orders_p50) setVal('vol_normal', data.prediction.predicted_orders_p50);
-  if (data.prediction?.predicted_orders_p90) setVal('vol_peak', data.prediction.predicted_orders_p90);
-
-  // Number of employees -> staff
-  if (data.number_employes) setVal('staff_count', data.number_employes);
-
-  // Channels checkboxes based on enrichment data
-  if (data.instagram_url) checkCheckbox('ch-val', 'Instagram');
-  if (data.fb_followers && data.fb_followers > 0) checkCheckbox('ch-val', 'Facebook');
-  if (data.domain) checkCheckbox('ch-val', 'Web Propia');
-  if (data.on_mercadolibre) checkCheckbox('ch-val', 'MercadoLibre');
-  if (data.on_amazon) checkCheckbox('ch-val', 'Amazon');
-  if (data.on_rappi) checkCheckbox('ch-val', 'Rappi');
-  if (data.on_walmart) checkCheckbox('ch-val', 'Walmart');
+  // vol_normal = predicted_orders_p90
+  if (data.prediction?.predicted_orders_p90) setVal('vol_normal', data.prediction.predicted_orders_p90);
 }
 
-function attachFormHandlers() {
+function collectFormData(): Record<string, unknown> {
+  const val = (id: string) => (document.getElementById(id) as HTMLInputElement)?.value || '';
+  return {
+    bdr: val('bdr'),
+    origin: val('origin'),
+    brand: val('brand'),
+    conn_date: val('conn_date'),
+    hubspot_link: val('hubspot_link'),
+    seller: val('seller'),
+    seller_email: val('seller_email'),
+    vol_normal: val('vol_normal'),
+    vol_peak: val('vol_peak'),
+    seasons: Array.from(document.querySelectorAll('.season-check:checked')).map((c) => (c as HTMLInputElement).value),
+    product_desc: val('product_desc'),
+    d2c_vol: val('d2c_vol'),
+    b2b_vol: val('b2b_vol'),
+    ito: val('ito'),
+    staff_count: val('staff_count'),
+    skus_count: val('skus_count'),
+    avg_weight: val('avg_weight'),
+    ticket: val('ticket'),
+    invima: val('invima'),
+    physical_stores: val('physical_stores'),
+    daily_vol: val('daily_vol'),
+    p_local: val('p_local'),
+    p_nacional: val('p_nacional'),
+    city1: val('city1'), p_city1: val('p_city1'),
+    city2: val('city2'), p_city2: val('p_city2'),
+    city3: val('city3'), p_city3: val('p_city3'),
+    channels: Array.from(document.querySelectorAll('.ch-val:checked')).map((c) => (c as HTMLInputElement).value),
+    top_channel: val('top_channel'),
+    crm_type: val('crm_type'),
+    op_type: val('op_type'),
+    courier: val('courier'),
+    pains: Array.from(document.querySelectorAll('.pain-val:checked')).map((p) => (p as HTMLInputElement).value),
+    pain_notes: val('pain_notes'),
+    delivery_times: val('delivery_times'),
+    meeting_date: val('meeting_date'),
+    meeting_time: val('meeting_time'),
+  };
+}
+
+function restoreFromSpicedData(saved: Record<string, unknown>) {
+  // Text/number/date/time inputs
+  const fields = ['bdr', 'brand', 'conn_date', 'hubspot_link', 'seller', 'seller_email',
+    'vol_normal', 'vol_peak', 'product_desc', 'd2c_vol', 'b2b_vol', 'ito',
+    'staff_count', 'skus_count', 'avg_weight', 'ticket', 'daily_vol',
+    'city1', 'city2', 'city3', 'top_channel', 'courier', 'pain_notes',
+    'delivery_times', 'meeting_date', 'meeting_time'];
+  fields.forEach(f => { if (saved[f]) setVal(f, saved[f] as string); });
+
+  // Selects
+  if (saved.origin) setVal('origin', saved.origin as string);
+  if (saved.invima) setVal('invima', saved.invima as string);
+  if (saved.physical_stores) setVal('physical_stores', saved.physical_stores as string);
+  if (saved.crm_type) setVal('crm_type', saved.crm_type as string);
+  if (saved.op_type) setVal('op_type', saved.op_type as string);
+
+  // Range sliders + display labels
+  ['p_local', 'p_nacional', 'p_city1', 'p_city2', 'p_city3'].forEach(id => {
+    if (saved[id]) {
+      setVal(id, saved[id] as string);
+      const el = document.getElementById(id) as HTMLInputElement;
+      if (el) el.dispatchEvent(new Event('input', { bubbles: true }));
+    }
+  });
+
+  // Checkboxes
+  const seasons = (saved.seasons as string[]) || [];
+  seasons.forEach(s => checkCheckbox('season-check', s));
+  const channels = (saved.channels as string[]) || [];
+  channels.forEach(c => checkCheckbox('ch-val', c));
+  const pains = (saved.pains as string[]) || [];
+  pains.forEach(p => checkCheckbox('pain-val', p));
+}
+
+function attachFormHandlers(domain?: string | null) {
   // Range sliders
   const sliders = [
     { slider: 'p_local', display: 'v_local' },
@@ -412,8 +437,16 @@ function attachFormHandlers() {
     window.open(`https://calendar.google.com/calendar/render?action=TEMPLATE&text=${title}&dates=${start}/${end}&details=${details}`, '_blank');
   });
 
-  // Generate SPICED
-  document.getElementById('btn-generate')?.addEventListener('click', generateStructuredSpiced);
+  // Generate SPICED + save to backend
+  document.getElementById('btn-generate')?.addEventListener('click', () => {
+    generateStructuredSpiced();
+    if (domain) {
+      const formData = collectFormData();
+      saveSpicedData(domain, formData)
+        .then(() => showToast('Diagnostico guardado'))
+        .catch(err => console.warn('Failed to save SPICED data:', err));
+    }
+  });
 
   // Copy to HubSpot
   document.getElementById('btn-copy-hubspot')?.addEventListener('click', copyToHubSpot);
@@ -560,32 +593,36 @@ function ConexionPageInner() {
   const formRef = useRef<HTMLDivElement>(null);
   const [loading, setLoading] = useState(!!domain);
   const [companyName, setCompanyName] = useState<string | null>(null);
+  const [enrichmentData, setEnrichmentData] = useState<EnrichmentV2Results | null>(null);
 
-  const initForm = useCallback((data?: EnrichmentV2Results) => {
-    attachFormHandlers();
-    if (data) {
-      prefillFromEnrichment(data);
-      setCompanyName(data.company_name || domain || null);
-    }
-  }, [domain]);
-
+  // Effect 1: fetch enrichment data
   useEffect(() => {
     if (!domain) {
-      // No domain, just attach handlers
-      setTimeout(() => attachFormHandlers(), 100);
+      setLoading(false);
       return;
     }
-
     getCompany(domain)
       .then((result) => {
-        setLoading(false);
-        setTimeout(() => initForm(result), 100);
+        setEnrichmentData(result);
+        setCompanyName(result.company_name || domain || null);
       })
-      .catch(() => {
-        setLoading(false);
-        setTimeout(() => attachFormHandlers(), 100);
-      });
-  }, [domain, initForm]);
+      .catch(() => {})
+      .finally(() => setLoading(false));
+  }, [domain]);
+
+  // Effect 2: runs AFTER DOM paint when loading is done — attach handlers + prefill
+  useEffect(() => {
+    if (loading) return;
+    attachFormHandlers(domain);
+    if (enrichmentData) {
+      // Saved SPICED data takes priority over enrichment defaults
+      if (enrichmentData.spiced_data && typeof enrichmentData.spiced_data === 'object' && Object.keys(enrichmentData.spiced_data).length > 0) {
+        restoreFromSpicedData(enrichmentData.spiced_data as Record<string, unknown>);
+      } else {
+        prefillFromEnrichment(enrichmentData);
+      }
+    }
+  }, [loading, enrichmentData, domain]);
 
   return (
     <div className="min-h-screen bg-[#F8FAFC]">

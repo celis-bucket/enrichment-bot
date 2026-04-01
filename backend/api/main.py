@@ -63,6 +63,7 @@ from api.models.schemas import (
     TeamAlert,
     TeamAlertsResponse,
     TeamLeadListResponse,
+    SpicedDataRequest,
 )
 from hubspot.hubspot_lookup import get_company_detail
 
@@ -1111,7 +1112,30 @@ async def get_company(domain: str, api_key: str = Depends(verify_api_key)):
             "hs_last_activity_date": row.get("hs_last_activity_date"),
             "hs_activity_count": row.get("hs_activity_count"),
             "hs_open_tasks_count": row.get("hs_open_tasks_count"),
+            "spiced_data": row.get("spiced_data"),
         }
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# ===== SPICED Diagnostic Save Endpoint =====
+
+@app.patch("/api/v2/enrichment/companies/{domain}/spiced", tags=["Companies"])
+async def save_spiced_data(domain: str, request: SpicedDataRequest, api_key: str = Depends(verify_api_key)):
+    """Save SPICED diagnostic form data for a company."""
+    try:
+        client = supabase_client or get_supabase_client()
+        clean_domain = domain.lower().strip()
+        result = client.update(
+            "enriched_companies",
+            data={"spiced_data": json.dumps(request.spiced_data)},
+            eq={"domain": clean_domain},
+        )
+        if not result:
+            raise HTTPException(status_code=404, detail=f"Company not found: {domain}")
+        return {"saved": True, "domain": clean_domain}
     except HTTPException:
         raise
     except Exception as e:

@@ -183,6 +183,26 @@ export async function submitFeedback(
   return response.json();
 }
 
+// ===== SPICED Diagnostic API =====
+
+export async function saveSpicedData(
+  domain: string,
+  spicedData: Record<string, unknown>,
+): Promise<{ saved: boolean }> {
+  const response = await fetch(
+    `${API_BASE}/api/v2/enrichment/companies/${encodeURIComponent(domain)}/spiced`,
+    {
+      method: 'PATCH',
+      headers: authHeaders({ 'Content-Type': 'application/json' }),
+      body: JSON.stringify({ spiced_data: spicedData }),
+    }
+  );
+  if (!response.ok) {
+    throw new Error(`Failed to save SPICED data: HTTP ${response.status}`);
+  }
+  return response.json();
+}
+
 // ===== Leads Dashboard API =====
 
 export async function getLeads(params?: {
