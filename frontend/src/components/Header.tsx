@@ -89,6 +89,16 @@ export function Header() {
             >
               TikTok
             </Link>
+            <Link
+              href="/conexion"
+              className={`px-2.5 sm:px-3 py-1.5 rounded-md text-xs sm:text-sm font-medium transition-colors shrink-0 ${
+                pathname?.startsWith('/conexion')
+                  ? 'bg-melonn-purple text-white'
+                  : 'text-melonn-purple-light hover:text-white hover:bg-melonn-navy-light'
+              }`}
+            >
+              Llamada de conexion
+            </Link>
           </nav>
         </div>
         <div className="w-3 h-3 rounded-full bg-melonn-green" />

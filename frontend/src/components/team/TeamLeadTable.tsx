@@ -1,5 +1,6 @@
 'use client';
 
+import Link from 'next/link';
 import type { LeadListItem } from '@/lib/types';
 import { PotentialTierBadge } from '@/components/PotentialTierBadge';
 
@@ -134,6 +135,12 @@ function LeadCard({ lead, onEnrich, onView }: { lead: LeadListItem; onEnrich: (d
           className="px-3 py-1 rounded-md border border-gray-200 text-gray-600 text-xs font-medium hover:bg-gray-50 transition-colors">
           Ver
         </button>
+        {lead.domain && (
+          <Link href={`/conexion?domain=${encodeURIComponent(lead.domain)}`}
+            className="px-3 py-1 rounded-md bg-emerald-500 text-white text-xs font-medium hover:bg-emerald-600 transition-colors whitespace-nowrap">
+            Llamada
+          </Link>
+        )}
         {lead.enrichment_type !== 'full' && lead.domain && (
           <button onClick={() => onEnrich(lead.domain!, lead.geography || 'COL')}
             className="px-3 py-1 rounded-md bg-melonn-purple text-white text-xs font-medium hover:bg-melonn-purple/90 transition-colors">
@@ -245,6 +252,15 @@ export function TeamLeadTable({ leads, sortBy, onSortChange, onEnrich, onView }:
                       >
                         Ver
                       </button>
+                      {lead.domain && (
+                        <Link
+                          href={`/conexion?domain=${encodeURIComponent(lead.domain)}`}
+                          className="px-2.5 py-1 rounded bg-emerald-500 text-white text-xs font-medium
+                                     hover:bg-emerald-600 transition-colors whitespace-nowrap"
+                        >
+                          Llamada
+                        </Link>
+                      )}
                       {lead.enrichment_type !== 'full' && lead.domain && (
                         <button
                           onClick={(e) => { e.stopPropagation(); onEnrich(lead.domain!, lead.geography || 'COL'); }}
