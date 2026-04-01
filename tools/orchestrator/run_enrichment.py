@@ -307,7 +307,7 @@ def run_enrichment(
     if not html:
         for evt in [platform_ready, geo_ready, social_ready, ig_ready, catalog_ready, apollo_ready, category_ready]:
             evt.set()
-        result.enrichment_type = "full"
+        result.enrichment_type = "failed"
         result.tool_coverage_pct = round(tools_succeeded / max(tools_attempted, 1), 2)
         result.total_runtime_sec = round(time.time() - start_time, 2)
         result.cost_estimate_usd = COST_PER_COMPANY_USD
