@@ -10,6 +10,12 @@ import type {
   LeadListResponse,
   FeedbackItem,
   HubSpotDetail,
+  TikTokWeeklyResponse,
+  TikTokShopHistoryResponse,
+  TikTokShopForDomainResponse,
+  TeamStatsResponse,
+  TeamAlertsResponse,
+  TeamLeadListResponse,
 } from './types';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
@@ -25,6 +31,7 @@ function authHeaders(extra: Record<string, string> = {}): Record<string, string>
 
 export async function analyzeUrlV2(
   url: string,
+  geography: string,
   onStep: (step: PipelineStep) => void,
   onResult: (result: EnrichmentV2Results) => void,
   onError: (error: string) => void,
@@ -32,7 +39,7 @@ export async function analyzeUrlV2(
   const response = await fetch(`${API_BASE}/api/v2/enrichment/analyze-stream`, {
     method: 'POST',
     headers: authHeaders({ 'Content-Type': 'application/json' }),
-    body: JSON.stringify({ url }),
+    body: JSON.stringify({ url, geography }),
   });
 
   if (!response.ok) {
@@ -172,6 +179,26 @@ export async function submitFeedback(
   );
   if (!response.ok) {
     throw new Error(`Failed to submit feedback: HTTP ${response.status}`);
+  }
+  return response.json();
+}
+
+// ===== SPICED Diagnostic API =====
+
+export async function saveSpicedData(
+  domain: string,
+  spicedData: Record<string, unknown>,
+): Promise<{ saved: boolean }> {
+  const response = await fetch(
+    `${API_BASE}/api/v2/enrichment/companies/${encodeURIComponent(domain)}/spiced`,
+    {
+      method: 'PATCH',
+      headers: authHeaders({ 'Content-Type': 'application/json' }),
+      body: JSON.stringify({ spiced_data: spicedData }),
+    }
+  );
+  if (!response.ok) {
+    throw new Error(`Failed to save SPICED data: HTTP ${response.status}`);
   }
   return response.json();
 }
@@ -325,5 +352,117 @@ export async function getFeedback(domain: string): Promise<FeedbackItem[]> {
     return data.feedback || [];
   } catch {
     return [];
+  }
+}
+
+
+// ===== Team Prospecting Panel API =====
+
+export async function getTeamMembers(): Promise<string[]> {
+  try {
+    const response = await fetch(`${API_BASE}/api/v2/team/members`, { headers: authHeaders() });
+    if (!response.ok) return [];
+    const data = await response.json();
+    return data.members || [];
+  } catch {
+    return [];
+  }
+}
+
+export async function getTeamStats(owner: string): Promise<TeamStatsResponse> {
+  const response = await fetch(
+    `${API_BASE}/api/v2/team/stats?owner=${encodeURIComponent(owner)}`,
+    { headers: authHeaders() }
+  );
+  if (!response.ok) {
+    return { owner, total_leads: 0, tier_distribution: {}, stage_distribution: {}, leads_not_enriched: 0, leads_worth_enrichment: 0, leads_cold_30d: 0, leads_stale_6m: 0, enrichment_pct: 0, avg_potential_score: 0 };
+  }
+  return response.json();
+}
+
+export async function getTeamAlerts(owner: string): Promise<TeamAlertsResponse> {
+  const response = await fetch(
+    `${API_BASE}/api/v2/team/alerts?owner=${encodeURIComponent(owner)}`,
+    { headers: authHeaders() }
+  );
+  if (!response.ok) {
+    return { owner, alerts: [] };
+  }
+  return response.json();
+}
+
+export async function getTeamLeads(params: {
+  owner: string;
+  page?: number;
+  limit?: number;
+  sort_by?: string;
+}): Promise<TeamLeadListResponse> {
+  const searchParams = new URLSearchParams();
+  searchParams.set('owner', params.owner);
+  if (params.page) searchParams.set('page', String(params.page));
+  if (params.limit) searchParams.set('limit', String(params.limit));
+  if (params.sort_by) searchParams.set('sort_by', params.sort_by);
+
+  const response = await fetch(
+    `${API_BASE}/api/v2/team/leads?${searchParams.toString()}`,
+    { headers: authHeaders() }
+  );
+  if (!response.ok) {
+    return { companies: [], total: 0, page: 1, limit: 25 };
+  }
+  return response.json();
+}
+
+// ===== TikTok Shop Dashboard API =====
+
+export async function getTikTokWeekly(params?: {
+  page?: number;
+  limit?: number;
+  category?: string;
+  sort_by?: string;
+  search?: string;
+  filter?: string;
+}): Promise<TikTokWeeklyResponse> {
+  const searchParams = new URLSearchParams();
+  if (params?.page) searchParams.set('page', String(params.page));
+  if (params?.limit) searchParams.set('limit', String(params.limit));
+  if (params?.category) searchParams.set('category', params.category);
+  if (params?.sort_by) searchParams.set('sort_by', params.sort_by);
+  if (params?.search) searchParams.set('search', params.search);
+  if (params?.filter) searchParams.set('filter', params.filter);
+
+  const response = await fetch(
+    `${API_BASE}/api/v2/tiktok/weekly?${searchParams.toString()}`,
+    { headers: authHeaders() }
+  );
+  if (!response.ok) {
+    return { shops: [], total: 0, page: 1, limit: 50, total_new: 0 };
+  }
+  return response.json();
+}
+
+export async function getTikTokShopHistory(shopName: string): Promise<TikTokShopHistoryResponse> {
+  const response = await fetch(
+    `${API_BASE}/api/v2/tiktok/shop/${encodeURIComponent(shopName)}/history`,
+    { headers: authHeaders() }
+  );
+  if (!response.ok) {
+    throw new Error(`Shop not found: ${shopName}`);
+  }
+  return response.json();
+}
+
+export async function getTikTokShopForDomain(domain: string): Promise<TikTokShopForDomainResponse> {
+  try {
+    const response = await fetch(
+      `${API_BASE}/api/v2/tiktok/shop-for-domain/${encodeURIComponent(domain)}`,
+      { headers: authHeaders() }
+    );
+    if (!response.ok) {
+      return { has_data: false };
+    }
+    return response.json();
+  } catch {
+    return { has_data: false };
   }
 }

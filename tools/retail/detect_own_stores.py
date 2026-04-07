@@ -152,7 +152,7 @@ def _count_stores_from_page(url: str) -> Dict[str, Any]:
     Returns:
         {total: int, col_count: int, mex_count: int, evidence: str}
     """
-    result = scrape_website(url, timeout=20, parse_html=True)
+    result = scrape_website(url, timeout=8, max_retries=1, parse_html=True)
     if not result["success"]:
         return {"total": 0, "col_count": 0, "mex_count": 0, "evidence": "Failed to scrape"}
 

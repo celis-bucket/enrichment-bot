@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { Header } from '@/components/Header';
 import { ScoreBar } from '@/components/ScoreBar';
 import { PotentialTierBadge } from '@/components/PotentialTierBadge';
+import { RetailDrawerSection } from '@/components/RetailDrawerSection';
 import { getLeads, getCompany, getHubSpotDetail, analyzeUrlV2, syncLeads, refreshLeadData, submitFeedback } from '@/lib/api';
 import type { LeadListItem, EnrichmentV2Results, PipelineStep, ApolloContact, HubSpotContact } from '@/lib/types';
 
@@ -186,22 +187,40 @@ function DetailDrawer({ domain, onClose, onEnrich }: { domain: string; onClose: 
             <p className="text-sm text-red-400 text-center py-12">No se encontro informacion.</p>
           ) : (
             <>
-              <Section title="Triage Score">
-                <Row label="Lite Score" value={<ScoreBar score={(data as unknown as LeadListItem).lite_triage_score} />} />
-                <Row label="Plataforma" value={data.platform} />
-                <Row label="Pais" value={data.geography} />
-                <Row label="Categoria" value={data.category} />
-                <Row label="Enrichment" value={(data as unknown as LeadListItem).enrichment_type || 'lite'} />
-              </Section>
+              {(() => {
+                const d = data as unknown as Record<string, string | number | null>;
+                const enrichType = (d.enrichment_type as string) || 'lite';
+                const isFull = enrichType === 'full';
+                return (
+                  <>
+                    <Section title="Info General">
+                      <Row label="Tipo enrichment" value={
+                        <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${isFull ? 'bg-melonn-green-50 text-melonn-green' : 'bg-gray-100 text-gray-500'}`}>
+                          {enrichType}
+                        </span>
+                      } />
+                      <Row label="Plataforma" value={data.platform} />
+                      <Row label="Pais" value={data.geography} />
+                      <Row label="Categoria" value={data.category} />
+                      {d.hs_lead_stage && <Row label="Lead Stage" value={d.hs_lead_stage as string} />}
+                      {d.hs_lead_owner && <Row label="Responsable" value={d.hs_lead_owner as string} />}
+                      {d.hs_lead_created_at && <Row label="Lead creado" value={(d.hs_lead_created_at as string).slice(0, 10)} />}
+                      {d.hs_last_activity_date && <Row label="Ult. actividad" value={(d.hs_last_activity_date as string).slice(0, 10)} />}
+                      {d.lite_triage_score != null && <Row label="Lite Score" value={<ScoreBar score={d.lite_triage_score as number} />} />}
+                    </Section>
 
-              {data.overall_potential_score != null && (
-                <Section title="Potential Score">
-                  <Row label="Overall" value={<ScoreBar score={data.overall_potential_score} />} />
-                  <Row label="Tier" value={<PotentialTierBadge tier={data.potential_tier} />} />
-                  <Row label="E-commerce Size" value={<ScoreBar score={data.ecommerce_size_score} />} />
-                  <Row label="Fit" value={<ScoreBar score={data.fit_score} />} />
-                </Section>
-              )}
+                    {data.overall_potential_score != null && (
+                      <Section title="Potential Score">
+                        <Row label="Overall" value={<ScoreBar score={data.overall_potential_score} />} />
+                        <Row label="Tier" value={<PotentialTierBadge tier={data.potential_tier} />} />
+                        <Row label="E-commerce Size" value={<ScoreBar score={data.ecommerce_size_score} />} />
+                        <Row label="Retail Size" value={<ScoreBar score={data.retail_size_score} />} />
+                        <Row label="Fit" value={<ScoreBar score={data.fit_score} />} />
+                      </Section>
+                    )}
+                  </>
+                );
+              })()}
 
               <Section title="Redes Sociales">
                 <Row label="IG Seguidores" value={fmt(data.ig_followers)} />
@@ -214,15 +233,11 @@ function DetailDrawer({ domain, onClose, onEnrich }: { domain: string; onClose: 
                 <Row label="TikTok Seguidores" value={data.tiktok_followers ? fmt(data.tiktok_followers) : undefined} />
               </Section>
 
-              {(data.meta_active_ads_count != null || data.tiktok_active_ads_count != null) && (
+              {(data.meta_active_ads_count != null) && (
                 <Section title="Publicidad">
                   <Row label="Meta Ads activos" value={data.meta_active_ads_count != null ? String(data.meta_active_ads_count) : undefined} />
                   <Row label="Meta Ad Library" value={data.meta_ad_library_url
                     ? <a href={data.meta_ad_library_url} target="_blank" rel="noreferrer" className="text-melonn-purple underline">Ver</a>
-                    : undefined} />
-                  <Row label="TikTok Ads activos" value={data.tiktok_active_ads_count != null ? String(data.tiktok_active_ads_count) : undefined} />
-                  <Row label="TikTok Ad Library" value={data.tiktok_ads_library_url
-                    ? <a href={data.tiktok_ads_library_url} target="_blank" rel="noreferrer" className="text-melonn-purple underline">Ver</a>
                     : undefined} />
                 </Section>
               )}
@@ -276,6 +291,8 @@ function DetailDrawer({ domain, onClose, onEnrich }: { domain: string; onClose: 
                 <Row label="Empleados" value={data.number_employes ? fmt(data.number_employes) : undefined} />
               </Section>
 
+              <RetailDrawerSection data={data} />
+
               <Section title="HubSpot CRM">
                 <Row label="Estado" value={data.hubspot_company_id ? 'En CRM' : 'No encontrada'} />
                 <Row label="Negocios" value={data.hubspot_deal_count != null ? String(data.hubspot_deal_count) : undefined} />
@@ -293,14 +310,20 @@ function DetailDrawer({ domain, onClose, onEnrich }: { domain: string; onClose: 
 }
 
 // --- Enrichment Modal ---
-function EnrichModal({ domain, onClose, onDone }: { domain: string; onClose: () => void; onDone: () => void }) {
+function EnrichModal({ domain, geography, onClose, onDone }: { domain: string; geography: string; onClose: () => void; onDone: () => void }) {
+  const [selectedGeo, setSelectedGeo] = useState<string | null>(geography && geography !== 'UNKNOWN' ? geography : null);
+  const [started, setStarted] = useState(false);
   const [steps, setSteps] = useState<PipelineStep[]>([]);
-  const [status, setStatus] = useState<'running' | 'done' | 'error'>('running');
+  const [status, setStatus] = useState<'picking' | 'running' | 'done' | 'error'>('picking');
   const [error, setError] = useState('');
 
-  useEffect(() => {
+  const startEnrichment = (geo: string) => {
+    setSelectedGeo(geo);
+    setStarted(true);
+    setStatus('running');
     analyzeUrlV2(
       domain,
+      geo,
       (step) => {
         setSteps((prev) => {
           const existing = prev.findIndex((s) => s.step === step.step);
@@ -315,51 +338,91 @@ function EnrichModal({ domain, onClose, onDone }: { domain: string; onClose: () 
       () => { setStatus('done'); },
       (err) => { setStatus('error'); setError(err); },
     ).catch((err) => { setStatus('error'); setError(err.message); });
-  }, [domain]);
+  };
 
   return (
     <>
-      <div className="fixed inset-0 bg-black/30 z-40" onClick={status !== 'running' ? onClose : undefined} />
+      <div className="fixed inset-0 bg-black/30 z-40" onClick={status === 'picking' || status === 'done' || status === 'error' ? onClose : undefined} />
       <div className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[500px] max-w-[90vw] bg-white rounded-xl shadow-2xl z-50 p-6">
         <h3 className="font-bold text-melonn-navy font-heading mb-1">Full Enrichment: {domain}</h3>
-        <p className="text-xs text-gray-400 mb-4">
-          {status === 'running' ? 'Ejecutando pipeline completo...' : status === 'done' ? 'Completado' : 'Error'}
-        </p>
 
-        <div className="max-h-[300px] overflow-y-auto space-y-1 mb-4">
-          {steps.map((s) => (
-            <div key={s.step} className="flex items-center gap-2 text-xs">
-              <span className={`w-2 h-2 rounded-full shrink-0 ${
-                s.status === 'ok' ? 'bg-melonn-green' :
-                s.status === 'running' ? 'bg-yellow-400 animate-pulse' :
-                s.status === 'fail' ? 'bg-red-400' : 'bg-gray-300'
-              }`} />
-              <span className="text-melonn-navy font-medium w-32 truncate">{s.step}</span>
-              <span className="text-gray-400 truncate flex-1">{s.detail}</span>
-              {s.duration_ms != null && (
-                <span className="text-gray-300 shrink-0">{(s.duration_ms / 1000).toFixed(1)}s</span>
+        {/* Country picker — shown before enrichment starts */}
+        {status === 'picking' && (
+          <>
+            <p className="text-sm text-gray-500 mb-4">Selecciona el pais para enriquecer:</p>
+            <div className="flex gap-3 mb-4">
+              <button
+                onClick={() => startEnrichment('COL')}
+                className={`flex-1 py-3 rounded-lg border-2 text-sm font-semibold transition-all ${
+                  selectedGeo === 'COL'
+                    ? 'border-melonn-green bg-melonn-green/10 text-melonn-green'
+                    : 'border-gray-200 text-gray-600 hover:border-melonn-green/50'
+                }`}
+              >
+                Colombia
+              </button>
+              <button
+                onClick={() => startEnrichment('MEX')}
+                className={`flex-1 py-3 rounded-lg border-2 text-sm font-semibold transition-all ${
+                  selectedGeo === 'MEX'
+                    ? 'border-melonn-green bg-melonn-green/10 text-melonn-green'
+                    : 'border-gray-200 text-gray-600 hover:border-melonn-green/50'
+                }`}
+              >
+                Mexico
+              </button>
+            </div>
+            <div className="flex justify-end">
+              <button onClick={onClose} className="px-4 py-2 rounded-md bg-gray-200 text-gray-700 text-sm font-medium">
+                Cancelar
+              </button>
+            </div>
+          </>
+        )}
+
+        {/* Pipeline progress — shown after country is selected */}
+        {status !== 'picking' && (
+          <>
+            <p className="text-xs text-gray-400 mb-4">
+              {status === 'running' ? `Ejecutando pipeline completo (${selectedGeo})...` : status === 'done' ? 'Completado' : 'Error'}
+            </p>
+
+            <div className="max-h-[300px] overflow-y-auto space-y-1 mb-4">
+              {steps.map((s) => (
+                <div key={s.step} className="flex items-center gap-2 text-xs">
+                  <span className={`w-2 h-2 rounded-full shrink-0 ${
+                    s.status === 'ok' ? 'bg-melonn-green' :
+                    s.status === 'running' ? 'bg-yellow-400 animate-pulse' :
+                    s.status === 'fail' ? 'bg-red-400' : 'bg-gray-300'
+                  }`} />
+                  <span className="text-melonn-navy font-medium w-32 truncate">{s.step}</span>
+                  <span className="text-gray-400 truncate flex-1">{s.detail}</span>
+                  {s.duration_ms != null && (
+                    <span className="text-gray-300 shrink-0">{(s.duration_ms / 1000).toFixed(1)}s</span>
+                  )}
+                </div>
+              ))}
+            </div>
+
+            {error && <p className="text-xs text-red-500 mb-3">{error}</p>}
+
+            <div className="flex justify-end gap-2">
+              {status === 'done' && (
+                <button
+                  onClick={() => { onDone(); onClose(); }}
+                  className="px-4 py-2 rounded-md bg-melonn-green text-white text-sm font-medium hover:bg-melonn-green/90"
+                >
+                  Listo
+                </button>
+              )}
+              {status === 'error' && (
+                <button onClick={onClose} className="px-4 py-2 rounded-md bg-gray-200 text-gray-700 text-sm font-medium">
+                  Cerrar
+                </button>
               )}
             </div>
-          ))}
-        </div>
-
-        {error && <p className="text-xs text-red-500 mb-3">{error}</p>}
-
-        <div className="flex justify-end gap-2">
-          {status === 'done' && (
-            <button
-              onClick={() => { onDone(); onClose(); }}
-              className="px-4 py-2 rounded-md bg-melonn-green text-white text-sm font-medium hover:bg-melonn-green/90"
-            >
-              Listo
-            </button>
-          )}
-          {status === 'error' && (
-            <button onClick={onClose} className="px-4 py-2 rounded-md bg-gray-200 text-gray-700 text-sm font-medium">
-              Cerrar
-            </button>
-          )}
-        </div>
+          </>
+        )}
       </div>
     </>
   );
@@ -488,10 +551,12 @@ export default function LeadsPage() {
   const [enrichmentType, setEnrichmentType] = useState('');
   const [leadStage, setLeadStage] = useState('');
   const [owner, setOwner] = useState('');
+  const [potentialTier, setPotentialTier] = useState('');
   const [sortBy, setSortBy] = useState('lite_triage_score');
   const [isLoading, setIsLoading] = useState(true);
   const [selectedDomain, setSelectedDomain] = useState<string | null>(null);
   const [enrichingDomain, setEnrichingDomain] = useState<string | null>(null);
+  const [enrichingGeo, setEnrichingGeo] = useState<string>('COL');
   const [syncing, setSyncing] = useState(false);
   const [syncMsg, setSyncMsg] = useState('');
   const [refreshing, setRefreshing] = useState(false);
@@ -511,6 +576,9 @@ export default function LeadsPage() {
       if (owner) {
         filtered = filtered.filter(l => (l.hs_lead_owner || '') === owner);
       }
+      if (potentialTier) {
+        filtered = filtered.filter(l => (l.potential_tier || '') === potentialTier);
+      }
       setLeads(filtered);
       setTotal(filtered.length);
       setWorthFullCount(filtered.filter(l => l.worth_full_enrichment).length);
@@ -520,7 +588,7 @@ export default function LeadsPage() {
     } finally {
       setIsLoading(false);
     }
-  }, [search, worthEnrich, enrichmentType, leadStage, owner, sortBy]);
+  }, [search, worthEnrich, enrichmentType, leadStage, owner, potentialTier, sortBy]);
 
   useEffect(() => { fetchLeads(); }, [fetchLeads]);
 
@@ -634,6 +702,13 @@ export default function LeadsPage() {
             { value: 'Yeraldine Prieto', label: 'Yeraldine Prieto' },
             { value: 'Esteban Sanchez', label: 'Esteban Sanchez' },
           ]} />
+          <FilterSelect label="Potencial" value={potentialTier} onChange={setPotentialTier} options={[
+            { value: '', label: 'Potencial: Todos' },
+            { value: 'Extraordinary', label: 'Extraordinary' },
+            { value: 'Very Good', label: 'Very Good' },
+            { value: 'Good', label: 'Good' },
+            { value: 'Low', label: 'Low' },
+          ]} />
           <FilterSelect label="Ordenar" value={sortBy} onChange={setSortBy} options={[
             { value: 'lite_triage_score', label: 'Score' },
             { value: 'ig_followers', label: 'IG Followers' },
@@ -648,7 +723,7 @@ export default function LeadsPage() {
               <thead>
                 <tr className="bg-melonn-purple-50 text-melonn-navy text-left">
                   <th className="px-3 py-2.5 font-semibold whitespace-nowrap">Empresa</th>
-                  <th className="px-2 py-2.5 font-semibold whitespace-nowrap">Score</th>
+                  <th className="px-2 py-2.5 font-semibold whitespace-nowrap">Potencial</th>
                   <th className="px-2 py-2.5 font-semibold whitespace-nowrap text-right">IG Seguidores</th>
                   <th className="px-2 py-2.5 font-semibold whitespace-nowrap">Responsable</th>
                   <th className="px-2 py-2.5 font-semibold whitespace-nowrap">Creado</th>
@@ -700,7 +775,11 @@ export default function LeadsPage() {
                         )}
                       </td>
                       <td className="px-2 py-2.5 whitespace-nowrap">
-                        <ScoreBar score={l.lite_triage_score} />
+                        {l.potential_tier ? (
+                          <PotentialTierBadge tier={l.potential_tier} />
+                        ) : (
+                          <span className="text-xs text-gray-400">--</span>
+                        )}
                       </td>
                       <td className="px-2 py-2.5 text-right text-gray-600 whitespace-nowrap">{fmt(l.ig_followers)}</td>
                       <td className="px-2 py-2.5 text-gray-600 whitespace-nowrap truncate max-w-[120px]">
@@ -740,7 +819,7 @@ export default function LeadsPage() {
                           </button>
                           {l.enrichment_type !== 'full' && l.domain && (
                             <button
-                              onClick={(e) => { e.stopPropagation(); setEnrichingDomain(l.domain || null); }}
+                              onClick={(e) => { e.stopPropagation(); setEnrichingDomain(l.domain || null); setEnrichingGeo(l.geography || 'COL'); }}
                               className="px-2.5 py-1 rounded-md bg-melonn-green text-white
                                          hover:bg-melonn-green/90 transition-colors whitespace-nowrap font-medium"
                             >
@@ -782,8 +861,43 @@ export default function LeadsPage() {
       {enrichingDomain && (
         <EnrichModal
           domain={enrichingDomain}
+          geography={enrichingGeo}
           onClose={() => setEnrichingDomain(null)}
-          onDone={fetchLeads}
+          onDone={async () => {
+            // Update only the enriched row in place — no full reload, no scroll reset
+            try {
+              const fresh = await getCompany(enrichingDomain!);
+              setLeads((prev) =>
+                prev.map((l) =>
+                  l.domain === enrichingDomain
+                    ? {
+                        ...l,
+                        enrichment_type: 'full',
+                        company_name: fresh.company_name ?? l.company_name,
+                        platform: fresh.platform ?? l.platform,
+                        geography: fresh.geography ?? l.geography,
+                        ig_followers: fresh.ig_followers ?? l.ig_followers,
+                        ig_size_score: fresh.ig_size_score ?? l.ig_size_score,
+                        overall_potential_score: fresh.overall_potential_score ?? l.overall_potential_score,
+                        potential_tier: fresh.potential_tier ?? l.potential_tier,
+                        predicted_orders_p90: fresh.prediction?.predicted_orders_p90 ?? l.predicted_orders_p90,
+                        tool_coverage_pct: fresh.tool_coverage_pct ?? l.tool_coverage_pct,
+                        hubspot_deal_stage: fresh.hubspot_deal_stage ?? l.hubspot_deal_stage,
+                        hubspot_deal_count: fresh.hubspot_deal_count ?? l.hubspot_deal_count,
+                      }
+                    : l,
+                ),
+              );
+              setFullyEnrichedCount((c) => c + 1);
+            } catch {
+              // Fallback: just mark as enriched locally
+              setLeads((prev) =>
+                prev.map((l) =>
+                  l.domain === enrichingDomain ? { ...l, enrichment_type: 'full' } : l,
+                ),
+              );
+            }
+          }}
         />
       )}
     </div>

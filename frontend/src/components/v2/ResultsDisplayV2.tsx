@@ -8,9 +8,11 @@ import { CatalogCardV2 } from './CatalogCardV2';
 import { TrafficDemandCardV2 } from './TrafficDemandCardV2';
 import { ContactCardV2 } from './ContactCardV2';
 import { MetaAdsCardV2 } from './MetaAdsCardV2';
-import { TikTokAdsCardV2 } from './TikTokAdsCardV2';
+import { TikTokShopCardV2 } from './TikTokShopCardV2';
 import { PredictionCardV2 } from './PredictionCardV2';
 import { HubSpotCardV2 } from './HubSpotCardV2';
+import { RetailChannelsCardV2 } from './RetailChannelsCardV2';
+import { PotentialScoreCardV2 } from './PotentialScoreCardV2';
 import { WorkflowReport } from '../WorkflowReport';
 import { FeedbackPanel } from '../FeedbackPanel';
 
@@ -141,11 +143,10 @@ export function ResultsDisplayV2({ results }: ResultsDisplayV2Props) {
           feedback={feedback}
         />
 
-        {/* Anuncios en TikTok */}
-        <TikTokAdsCardV2
-          activeAdsCount={results.tiktok_active_ads_count}
-          adLibraryUrl={results.tiktok_ads_library_url}
+        {/* TikTok Shop */}
+        <TikTokShopCardV2
           domain={domain}
+          geography={results.geography}
           feedback={feedback}
         />
 
@@ -179,7 +180,17 @@ export function ResultsDisplayV2({ results }: ResultsDisplayV2Props) {
           domain={domain}
           feedback={feedback}
         />
+
+        {/* Canales Retail */}
+        <RetailChannelsCardV2
+          results={results}
+          domain={domain}
+          feedback={feedback}
+        />
       </div>
+
+      {/* Potential Score (full-width) */}
+      <PotentialScoreCardV2 results={results} />
 
       {/* Workflow Log */}
       {results.workflow_log && results.workflow_log.length > 0 && (

@@ -438,11 +438,23 @@ def scrape_woocommerce_api(base_url: str) -> Dict[str, Any]:
 
     try:
         headers = {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
             'Accept': 'application/json',
+            'Accept-Language': 'es-CO,es;q=0.9,en-US;q=0.8,en;q=0.7',
+            'Sec-Fetch-Dest': 'empty',
+            'Sec-Fetch-Mode': 'cors',
+            'Sec-Fetch-Site': 'same-origin',
         }
 
-        resp = requests.get(
+        # First visit homepage to get cookies (some WAFs require this)
+        session = requests.Session()
+        try:
+            homepage_headers = {**headers, 'Accept': 'text/html', 'Sec-Fetch-Dest': 'document', 'Sec-Fetch-Mode': 'navigate', 'Sec-Fetch-Site': 'none', 'Sec-Fetch-User': '?1'}
+            session.get(store_base, headers=homepage_headers, timeout=10)
+        except Exception:
+            pass
+
+        resp = session.get(
             api_url,
             params={'per_page': 100},
             headers=headers,

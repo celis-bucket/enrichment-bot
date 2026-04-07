@@ -54,6 +54,16 @@ from api.models.schemas import (
     FeedbackResolveRequest,
     UnresolvedFeedbackResponse,
     HubSpotDetailResponse,
+    TikTokShopWeeklyItem,
+    TikTokWeeklyResponse,
+    TikTokShopHistoryResponse,
+    TikTokShopHistoryItem,
+    TikTokShopForDomainResponse,
+    TeamStatsResponse,
+    TeamAlert,
+    TeamAlertsResponse,
+    TeamLeadListResponse,
+    SpicedDataRequest,
 )
 from hubspot.hubspot_lookup import get_company_detail
 
@@ -210,6 +220,21 @@ async def root():
 
 
 
+def _parse_json_list(value) -> list:
+    """Parse a value that might be a JSON string, a list, or None into a list."""
+    if value is None:
+        return []
+    if isinstance(value, list):
+        return value
+    if isinstance(value, str):
+        try:
+            parsed = json.loads(value)
+            return parsed if isinstance(parsed, list) else []
+        except (json.JSONDecodeError, TypeError):
+            return []
+    return []
+
+
 def _run_prediction(enrichment_result) -> dict:
     """Run the orders estimator on an enrichment result. Returns prediction dict."""
     try:
@@ -293,18 +318,6 @@ def _build_v2_response(enrichment_result, prediction: dict) -> dict:
                 f"&q={encoded}&search_type=keyword_unordered&media_type=all"
             )
 
-    # Build TikTok Ads Library URL from company name or domain
-    tiktok_ads_library_url = None
-    if enrichment_result.tiktok_active_ads_count is not None:
-        search_term = enrichment_result.company_name or enrichment_result.domain or ""
-        if search_term:
-            import urllib.parse
-            encoded = urllib.parse.quote(search_term)
-            tiktok_ads_library_url = (
-                f"https://library.tiktok.com/ads"
-                f"?region=all&adv_name={encoded}&sort_by=last_shown_date"
-            )
-
     return {
         # Identity
         "company_name": enrichment_result.company_name,
@@ -335,9 +348,6 @@ def _build_v2_response(enrichment_result, prediction: dict) -> dict:
         # Meta Ads
         "meta_active_ads_count": enrichment_result.meta_active_ads_count,
         "meta_ad_library_url": meta_ad_library_url,
-        # TikTok Ads
-        "tiktok_active_ads_count": enrichment_result.tiktok_active_ads_count,
-        "tiktok_ads_library_url": tiktok_ads_library_url,
         # Catalog
         "product_count": enrichment_result.product_count,
         "avg_price": enrichment_result.avg_price,
@@ -360,6 +370,22 @@ def _build_v2_response(enrichment_result, prediction: dict) -> dict:
         "hubspot_contact_exists": enrichment_result.hubspot_contact_exists,
         "hubspot_lifecycle_label": enrichment_result.hubspot_lifecycle_label,
         "hubspot_last_contacted": enrichment_result.hubspot_last_contacted,
+        # Retail Channels
+        "has_distributors": enrichment_result.has_distributors,
+        "has_own_stores": enrichment_result.has_own_stores,
+        "own_store_count_col": enrichment_result.own_store_count_col,
+        "own_store_count_mex": enrichment_result.own_store_count_mex,
+        "has_multibrand_stores": enrichment_result.has_multibrand_stores,
+        "multibrand_store_names": enrichment_result.multibrand_store_names or [],
+        "on_mercadolibre": enrichment_result.on_mercadolibre,
+        "on_amazon": enrichment_result.on_amazon,
+        "on_rappi": enrichment_result.on_rappi,
+        "on_walmart": enrichment_result.on_walmart,
+        "on_liverpool": enrichment_result.on_liverpool,
+        "on_coppel": enrichment_result.on_coppel,
+        "on_tiktok_shop": enrichment_result.on_tiktok_shop,
+        "marketplace_names": enrichment_result.marketplace_names or [],
+        "retail_confidence": enrichment_result.retail_confidence,
         # Prediction
         "prediction": pred_model,
         # Potential Scoring
@@ -398,6 +424,7 @@ async def analyze_stream_v2(request: SyncEnrichmentRequest, api_key: str = Depen
         try:
             result = run_enrichment(
                 raw_url=request.url,
+                country=request.geography,
                 skip_apollo=False,
                 enable_google_demand=True,
                 on_step=on_step,
@@ -441,6 +468,21 @@ async def analyze_stream_v2(request: SyncEnrichmentRequest, api_key: str = Depen
         ms = int((time.time() - t0) * 1000)
         pred_status = "ok" if prediction else "warn"
         yield f"data: {json.dumps({'type': 'step', 'step': 'Orders estimation', 'status': pred_status, 'duration_ms': ms, 'detail': ''})}\n\n"
+
+        # Re-score with prediction data (scoring ran before prediction in pipeline)
+        if prediction:
+            from tools.scoring.potential_scoring import score_company
+            score_input = enrichment_result.to_dict()
+            score_input["predicted_orders_p90"] = prediction.get("predicted_orders_p90")
+            score_input["predicted_orders_p50"] = prediction.get("predicted_orders_p50")
+            score_input["predicted_orders_p10"] = prediction.get("predicted_orders_p10")
+            scores = score_company(score_input)
+            enrichment_result.ecommerce_size_score = scores["ecommerce_size_score"]
+            enrichment_result.retail_size_score = scores["retail_size_score"]
+            enrichment_result.combined_size_score = scores["combined_size_score"]
+            enrichment_result.fit_score = scores["fit_score"]
+            enrichment_result.overall_potential_score = scores["overall_potential_score"]
+            enrichment_result.potential_tier = scores["potential_tier"]
 
         # Save to Supabase
         yield f"data: {json.dumps({'type': 'step', 'step': 'Saving to database', 'status': 'running', 'duration_ms': 0, 'detail': ''})}\n\n"
@@ -513,6 +555,9 @@ async def list_companies(
             "ig_followers,ig_size_score,ig_health_score,meta_active_ads_count,"
             "contact_name,contact_email,predicted_orders_p50,predicted_orders_p90,prediction_confidence,"
             "hubspot_company_id,hubspot_deal_count,hubspot_deal_stage,"
+            "has_distributors,has_own_stores,has_multibrand_stores,multibrand_store_names,"
+            "on_mercadolibre,on_amazon,on_rappi,on_walmart,on_liverpool,on_coppel,on_tiktok_shop,"
+            "marketplace_names,retail_confidence,"
             "ecommerce_size_score,retail_size_score,combined_size_score,"
             "fit_score,overall_potential_score,potential_tier,"
             "tool_coverage_pct,updated_at"
@@ -577,10 +622,13 @@ async def list_leads(
         columns = (
             "id,domain,clean_url,company_name,platform,geography,"
             "ig_followers,ig_size_score,lite_triage_score,worth_full_enrichment,"
-            "enrichment_type,hubspot_company_id,hubspot_deal_stage,hubspot_deal_count,"
-            "hs_lead_stage,hs_lead_label,hs_lead_owner,hs_last_lost_deal_date,hs_lead_created_at,"
+            "enrichment_type,hubspot_company_id,hubspot_company_url,hubspot_deal_stage,hubspot_deal_count,"
+            "source,hs_lead_stage,hs_lead_label,hs_lead_owner,hs_last_lost_deal_date,hs_lead_created_at,"
             "hs_last_activity_date,hs_activity_count,hs_open_tasks_count,"
             "overall_potential_score,potential_tier,predicted_orders_p90,"
+            "has_distributors,has_own_stores,has_multibrand_stores,multibrand_store_names,"
+            "on_mercadolibre,on_amazon,on_rappi,on_walmart,on_liverpool,on_coppel,on_tiktok_shop,"
+            "marketplace_names,retail_confidence,"
             "tool_coverage_pct,updated_at"
         )
         rows = client.select(
@@ -708,6 +756,284 @@ async def refresh_hubspot_data_endpoint(api_key: str = Depends(verify_api_key)):
     return StreamingResponse(event_generator(), media_type="text/event-stream")
 
 
+# ===== Team Prospecting Panel =====
+
+_TEAM_EXCLUDE_STAGES = {"cierre ganado", "consideracion", "parametrización", "onboarding"}
+
+_TEAM_COLUMNS = (
+    "id,domain,clean_url,company_name,platform,geography,"
+    "ig_followers,ig_size_score,lite_triage_score,worth_full_enrichment,"
+    "enrichment_type,hubspot_company_id,hubspot_company_url,hubspot_deal_stage,hubspot_deal_count,"
+    "source,hs_lead_stage,hs_lead_label,hs_lead_owner,hs_last_lost_deal_date,hs_lead_created_at,"
+    "hs_last_activity_date,hs_activity_count,hs_open_tasks_count,"
+    "overall_potential_score,potential_tier,predicted_orders_p90,"
+    "has_distributors,has_own_stores,has_multibrand_stores,multibrand_store_names,"
+    "on_mercadolibre,on_amazon,on_rappi,on_walmart,on_liverpool,on_coppel,on_tiktok_shop,"
+    "marketplace_names,retail_confidence,"
+    "tool_coverage_pct,updated_at"
+)
+
+
+def _parse_date(value: str | None) -> "datetime | None":
+    """Parse a date string from Supabase (date-only or full ISO) into a naive UTC datetime."""
+    if not value:
+        return None
+    from datetime import datetime, date
+    try:
+        dt = datetime.fromisoformat(value.replace("Z", "+00:00"))
+        # Strip timezone to compare with naive 'now' consistently
+        return dt.replace(tzinfo=None)
+    except (ValueError, TypeError):
+        return None
+
+
+def _fetch_owner_leads(owner: str) -> list[dict]:
+    """Fetch all leads for a specific owner, excluding won/active deals."""
+    client = supabase_client or get_supabase_client()
+    rows = client.select(
+        "enriched_companies",
+        columns=_TEAM_COLUMNS,
+        eq={"source": "hubspot_leads", "hs_lead_owner": owner},
+        order="overall_potential_score.desc.nullslast",
+    )
+    return [r for r in rows if not (
+        r.get("hubspot_deal_stage") and r["hubspot_deal_stage"].lower() in _TEAM_EXCLUDE_STAGES
+    )]
+
+
+@app.get("/api/v2/team/members", tags=["Team"])
+async def list_team_members(api_key: str = Depends(verify_api_key)):
+    """List unique lead owners from the database."""
+    try:
+        client = supabase_client or get_supabase_client()
+        rows = client.select(
+            "enriched_companies",
+            columns="hs_lead_owner",
+            eq={"source": "hubspot_leads"},
+        )
+        owners = sorted({r["hs_lead_owner"] for r in rows if r.get("hs_lead_owner")})
+        return {"members": owners}
+    except Exception as e:
+        print(f"[WARN] Team members failed: {e}")
+        return {"members": []}
+
+
+@app.get("/api/v2/team/stats", response_model=TeamStatsResponse, tags=["Team"])
+async def get_team_stats(
+    owner: str = Query(..., description="Lead owner name"),
+    api_key: str = Depends(verify_api_key),
+):
+    """Aggregated prospecting KPIs for one SDR."""
+    from collections import Counter
+    from datetime import datetime, timedelta, timezone
+
+    try:
+        rows = _fetch_owner_leads(owner)
+        total = len(rows)
+        if total == 0:
+            return TeamStatsResponse(owner=owner)
+
+        now = datetime.now(timezone.utc).replace(tzinfo=None)
+        thirty_days_ago = now - timedelta(days=30)
+        six_months_ago = now - timedelta(days=180)
+
+        tier_counter = Counter()
+        stage_counter = Counter()
+        full_count = 0
+        worth_count = 0
+        cold_count = 0
+        stale_count = 0
+        score_sum = 0
+        score_n = 0
+
+        for r in rows:
+            tier = r.get("potential_tier") or "Unknown"
+            tier_counter[tier] += 1
+
+            stage = r.get("hs_lead_stage") or "Sin stage"
+            stage_counter[stage] += 1
+
+            if r.get("enrichment_type") == "full":
+                full_count += 1
+            if r.get("worth_full_enrichment") and r.get("enrichment_type") != "full":
+                worth_count += 1
+
+            if r.get("overall_potential_score") is not None:
+                score_sum += r["overall_potential_score"]
+                score_n += 1
+
+            # Cold: no activity in 30+ days
+            last_dt = _parse_date(r.get("hs_last_activity_date"))
+            if last_dt:
+                if last_dt < thirty_days_ago:
+                    cold_count += 1
+            else:
+                cold_count += 1  # No date = never contacted
+
+            # Stale: created >6 months ago with no deal
+            created_dt = _parse_date(r.get("hs_lead_created_at"))
+            deal_count = r.get("hubspot_deal_count") or 0
+            if created_dt and deal_count == 0:
+                if created_dt < six_months_ago:
+                    stale_count += 1
+
+        return TeamStatsResponse(
+            owner=owner,
+            total_leads=total,
+            tier_distribution=dict(tier_counter),
+            stage_distribution=dict(stage_counter),
+            leads_not_enriched=total - full_count,
+            leads_worth_enrichment=worth_count,
+            leads_cold_30d=cold_count,
+            leads_stale_6m=stale_count,
+            enrichment_pct=round(full_count / total * 100, 1) if total else 0,
+            avg_potential_score=round(score_sum / score_n, 1) if score_n else 0,
+        )
+    except Exception as e:
+        print(f"[WARN] Team stats failed: {e}")
+        return TeamStatsResponse(owner=owner)
+
+
+@app.get("/api/v2/team/alerts", response_model=TeamAlertsResponse, tags=["Team"])
+async def get_team_alerts(
+    owner: str = Query(..., description="Lead owner name"),
+    api_key: str = Depends(verify_api_key),
+):
+    """Computed prospecting alerts for one SDR."""
+    from datetime import datetime, timedelta, timezone
+
+    try:
+        rows = _fetch_owner_leads(owner)
+        if not rows:
+            return TeamAlertsResponse(owner=owner)
+
+        now = datetime.now(timezone.utc).replace(tzinfo=None)
+        thirty_days_ago = now - timedelta(days=30)
+        six_months_ago = now - timedelta(days=180)
+        alerts: list[TeamAlert] = []
+
+        # 1. Wasted effort: activity on Low-tier leads
+        wasted = [r for r in rows
+                  if r.get("potential_tier") == "Low" and (r.get("hs_activity_count") or 0) > 0]
+        if wasted:
+            alerts.append(TeamAlert(
+                alert_type="wasted_effort",
+                title="Contactando leads sin potencial",
+                severity="red" if len(wasted) > 3 else "yellow",
+                count=len(wasted),
+                description=f"Tienes actividad en {len(wasted)} leads con potencial Low. Considera redirigir tu esfuerzo a leads con mejor potencial.",
+                affected_domains=[r.get("domain", "") for r in wasted[:5]],
+            ))
+
+        # 2. Cold leads: no activity in 30+ days
+        cold = []
+        for r in rows:
+            last_dt = _parse_date(r.get("hs_last_activity_date"))
+            if last_dt:
+                if last_dt < thirty_days_ago:
+                    cold.append(r)
+            else:
+                cold.append(r)  # No date = never contacted
+        if cold:
+            alerts.append(TeamAlert(
+                alert_type="cold_leads",
+                title="Leads enfriandose",
+                severity="red" if len(cold) > 5 else "yellow",
+                count=len(cold),
+                description=f"{len(cold)} leads sin actividad en los ultimos 30 dias. Estos leads se estan enfriando.",
+                affected_domains=[r.get("domain", "") for r in cold[:5]],
+            ))
+
+        # 3. Unenriched: worth enrichment but still lite
+        unenriched = [r for r in rows
+                      if r.get("worth_full_enrichment") and r.get("enrichment_type") != "full"]
+        if unenriched:
+            alerts.append(TeamAlert(
+                alert_type="unenriched",
+                title="Leads que vale enriquecer",
+                severity="yellow",
+                count=len(unenriched),
+                description=f"{len(unenriched)} leads marcados como 'vale enriquecer' aun no tienen enrichment completo.",
+                affected_domains=[r.get("domain", "") for r in unenriched[:5]],
+            ))
+
+        # 4. Stale: created >6 months, no deal
+        stale = []
+        for r in rows:
+            created_dt = _parse_date(r.get("hs_lead_created_at"))
+            deal_count = r.get("hubspot_deal_count") or 0
+            if created_dt and deal_count == 0:
+                if created_dt < six_months_ago:
+                    stale.append(r)
+        if stale:
+            alerts.append(TeamAlert(
+                alert_type="stale_no_deal",
+                title="Leads viejos sin avance",
+                severity="red" if len(stale) > 3 else "yellow",
+                count=len(stale),
+                description=f"{len(stale)} leads creados hace mas de 6 meses sin ningun deal asociado.",
+                affected_domains=[r.get("domain", "") for r in stale[:5]],
+            ))
+
+        # 5. Effort misdirected: % of activity on Low-tier leads
+        total_activity = sum(r.get("hs_activity_count") or 0 for r in rows)
+        low_activity = sum(r.get("hs_activity_count") or 0 for r in rows if r.get("potential_tier") == "Low")
+        if total_activity > 0:
+            low_pct = low_activity / total_activity * 100
+            if low_pct > 20:
+                alerts.append(TeamAlert(
+                    alert_type="effort_misdirected",
+                    title="Esfuerzo mal dirigido",
+                    severity="red" if low_pct > 40 else "yellow",
+                    count=round(low_pct),
+                    description=f"El {round(low_pct)}% de tu actividad total esta en leads con potencial Low.",
+                    affected_domains=[],
+                ))
+
+        # Sort: red first, then yellow
+        severity_order = {"red": 0, "yellow": 1, "green": 2}
+        alerts.sort(key=lambda a: severity_order.get(a.severity, 2))
+
+        return TeamAlertsResponse(owner=owner, alerts=alerts)
+    except Exception as e:
+        print(f"[WARN] Team alerts failed: {e}")
+        return TeamAlertsResponse(owner=owner)
+
+
+@app.get("/api/v2/team/leads", response_model=TeamLeadListResponse, tags=["Team"])
+async def get_team_leads(
+    owner: str = Query(..., description="Lead owner name"),
+    page: int = Query(1, ge=1),
+    limit: int = Query(25, ge=1, le=200),
+    sort_by: str = Query("overall_potential_score", description="Sort field"),
+    api_key: str = Depends(verify_api_key),
+):
+    """Paginated lead list for a specific SDR."""
+    try:
+        rows = _fetch_owner_leads(owner)
+
+        valid_sort = {"overall_potential_score", "lite_triage_score", "ig_followers",
+                      "hs_last_activity_date", "updated_at", "hs_lead_created_at"}
+        sort_field = sort_by if sort_by in valid_sort else "overall_potential_score"
+
+        rows.sort(key=lambda r: r.get(sort_field) or "", reverse=True)
+
+        total = len(rows)
+        start = (page - 1) * limit
+        page_rows = rows[start:start + limit]
+
+        companies = [LeadListItem(**r) for r in page_rows]
+        return TeamLeadListResponse(
+            companies=companies,
+            total=total,
+            page=page,
+            limit=limit,
+        )
+    except Exception as e:
+        print(f"[WARN] Team leads failed: {e}")
+        return TeamLeadListResponse()
+
+
 @app.get("/api/v2/enrichment/companies/{domain}", tags=["Companies"])
 async def get_company(domain: str, api_key: str = Depends(verify_api_key)):
     """Get full enrichment data for a single company by domain."""
@@ -745,18 +1071,6 @@ async def get_company(domain: str, api_key: str = Depends(verify_api_key)):
                     f"&q={encoded}&search_type=keyword_unordered&media_type=all"
                 )
 
-        # Build TikTok Ads Library URL
-        tiktok_ads_library_url = None
-        if row.get("tiktok_active_ads_count") is not None:
-            import urllib.parse
-            search_term = row.get("company_name") or row.get("domain") or ""
-            if search_term:
-                encoded = urllib.parse.quote(search_term)
-                tiktok_ads_library_url = (
-                    f"https://library.tiktok.com/ads"
-                    f"?region=all&adv_name={encoded}&sort_by=last_shown_date"
-                )
-
         return {
             "company_name": row.get("company_name"),
             "domain": row.get("domain"),
@@ -780,8 +1094,6 @@ async def get_company(domain: str, api_key: str = Depends(verify_api_key)):
             "contacts": row.get("contacts_list") or [],
             "meta_active_ads_count": row.get("meta_active_ads_count"),
             "meta_ad_library_url": meta_ad_library_url,
-            "tiktok_active_ads_count": row.get("tiktok_active_ads_count"),
-            "tiktok_ads_library_url": tiktok_ads_library_url,
             "product_count": row.get("product_count"),
             "avg_price": row.get("avg_price"),
             "price_range_min": row.get("price_range_min"),
@@ -800,6 +1112,22 @@ async def get_company(domain: str, api_key: str = Depends(verify_api_key)):
             "hubspot_contact_exists": row.get("hubspot_contact_exists"),
             "hubspot_lifecycle_label": row.get("hubspot_lifecycle_label"),
             "hubspot_last_contacted": row.get("hubspot_last_contacted"),
+            # Retail
+            "has_distributors": row.get("has_distributors"),
+            "has_own_stores": row.get("has_own_stores"),
+            "own_store_count_col": row.get("own_store_count_col"),
+            "own_store_count_mex": row.get("own_store_count_mex"),
+            "has_multibrand_stores": row.get("has_multibrand_stores"),
+            "multibrand_store_names": _parse_json_list(row.get("multibrand_store_names")),
+            "on_mercadolibre": row.get("on_mercadolibre"),
+            "on_amazon": row.get("on_amazon"),
+            "on_rappi": row.get("on_rappi"),
+            "on_walmart": row.get("on_walmart"),
+            "on_liverpool": row.get("on_liverpool"),
+            "on_coppel": row.get("on_coppel"),
+            "on_tiktok_shop": row.get("on_tiktok_shop"),
+            "marketplace_names": _parse_json_list(row.get("marketplace_names")),
+            "retail_confidence": row.get("retail_confidence"),
             "prediction": prediction,
             # Potential Scoring
             "ecommerce_size_score": row.get("ecommerce_size_score"),
@@ -813,7 +1141,41 @@ async def get_company(domain: str, api_key: str = Depends(verify_api_key)):
             "cost_estimate_usd": row.get("cost_estimate_usd"),
             "workflow_log": row.get("workflow_execution_log") or [],
             "updated_at": row.get("updated_at"),
+            # Lead / lite fields
+            "enrichment_type": row.get("enrichment_type"),
+            "lite_triage_score": row.get("lite_triage_score"),
+            "worth_full_enrichment": row.get("worth_full_enrichment"),
+            "hs_lead_stage": row.get("hs_lead_stage"),
+            "hs_lead_label": row.get("hs_lead_label"),
+            "hs_lead_owner": row.get("hs_lead_owner"),
+            "hs_lead_created_at": row.get("hs_lead_created_at"),
+            "hs_last_activity_date": row.get("hs_last_activity_date"),
+            "hs_activity_count": row.get("hs_activity_count"),
+            "hs_open_tasks_count": row.get("hs_open_tasks_count"),
+            "spiced_data": row.get("spiced_data"),
         }
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# ===== SPICED Diagnostic Save Endpoint =====
+
+@app.patch("/api/v2/enrichment/companies/{domain}/spiced", tags=["Companies"])
+async def save_spiced_data(domain: str, request: SpicedDataRequest, api_key: str = Depends(verify_api_key)):
+    """Save SPICED diagnostic form data for a company."""
+    try:
+        client = supabase_client or get_supabase_client()
+        clean_domain = domain.lower().strip()
+        result = client.update(
+            "enriched_companies",
+            data={"spiced_data": json.dumps(request.spiced_data)},
+            eq={"domain": clean_domain},
+        )
+        if not result:
+            raise HTTPException(status_code=404, detail=f"Company not found: {domain}")
+        return {"saved": True, "domain": clean_domain}
     except HTTPException:
         raise
     except Exception as e:
@@ -971,6 +1333,300 @@ async def retail_analyze_stream(request: RetailAnalyzeRequest, api_key: str = De
 
     return StreamingResponse(event_generator(), media_type="text/event-stream",
                              headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
+
+
+# ===== TikTok Shop Dashboard Endpoints =====
+
+@app.get("/api/v2/tiktok/weekly", response_model=TikTokWeeklyResponse, tags=["TikTok"])
+async def tiktok_weekly(
+    page: int = Query(1, ge=1),
+    limit: int = Query(50, ge=1, le=200),
+    category: str = Query("", description="Filter by category"),
+    sort_by: str = Query("gmv", description="Sort: gmv, sales_count, wow_sales, wow_gmv"),
+    search: str = Query("", description="Search shop name"),
+    filter: str = Query("all", description="Filter: all, new, rising, falling"),
+    api_key: str = Depends(verify_api_key),
+):
+    """Weekly TikTok Shop ranking with WoW deltas."""
+    import requests as _requests
+
+    try:
+        client = supabase_client or get_supabase_client()
+
+        # Get the two most recent week_start values
+        weeks_resp = _requests.get(
+            f"{client.rest_url}/tiktok_shop_weekly",
+            headers=client.headers,
+            params={"select": "week_start", "order": "week_start.desc", "limit": "2",
+                    "week_start": "not.is.null"},
+            timeout=15,
+        )
+        week_dates = list({r["week_start"] for r in weeks_resp.json()})
+        week_dates.sort(reverse=True)
+
+        if not week_dates:
+            return TikTokWeeklyResponse()
+
+        current_week = week_dates[0]
+        prev_week = week_dates[1] if len(week_dates) > 1 else None
+
+        # Fetch current week data
+        params = {
+            "select": "shop_name,company_name,category,rating,sales_count,gmv,products,influencers,fastmoss_url,week_start,matched_domain",
+            "week_start": f"eq.{current_week}",
+            "order": f"{'gmv' if sort_by in ('gmv', 'wow_gmv') else 'sales_count'}.desc.nullslast",
+        }
+        if category:
+            params["category"] = f"ilike.*{category}*"
+        if search:
+            params["shop_name"] = f"ilike.*{search}*"
+
+        cur_resp = _requests.get(
+            f"{client.rest_url}/tiktok_shop_weekly",
+            headers={**client.headers, "Prefer": "count=exact"},
+            params=params,
+            timeout=15,
+        )
+        current_shops = cur_resp.json()
+        total_count = int(cur_resp.headers.get("content-range", "0-0/0").split("/")[-1])
+
+        # Fetch previous week for deltas
+        prev_lookup = {}
+        if prev_week:
+            prev_resp = _requests.get(
+                f"{client.rest_url}/tiktok_shop_weekly",
+                headers=client.headers,
+                params={
+                    "select": "shop_name,sales_count,gmv",
+                    "week_start": f"eq.{prev_week}",
+                },
+                timeout=15,
+            )
+            for r in prev_resp.json():
+                prev_lookup[r["shop_name"]] = r
+
+        # Build items with deltas
+        items = []
+        for shop in current_shops:
+            prev = prev_lookup.get(shop["shop_name"])
+            is_new = prev is None and prev_week is not None
+
+            wow_sales = None
+            wow_gmv = None
+            if prev:
+                prev_sales = prev.get("sales_count")
+                cur_sales = shop.get("sales_count")
+                if prev_sales and cur_sales and prev_sales > 0:
+                    wow_sales = round(((cur_sales - prev_sales) / prev_sales) * 100, 1)
+
+                prev_gmv = prev.get("gmv")
+                cur_gmv = shop.get("gmv")
+                if prev_gmv and cur_gmv and prev_gmv > 0:
+                    wow_gmv = round(((cur_gmv - prev_gmv) / prev_gmv) * 100, 1)
+
+            items.append(TikTokShopWeeklyItem(
+                shop_name=shop["shop_name"],
+                company_name=shop.get("company_name"),
+                category=shop.get("category"),
+                rating=shop.get("rating"),
+                sales_count=shop.get("sales_count"),
+                gmv=shop.get("gmv"),
+                products=shop.get("products"),
+                influencers=shop.get("influencers"),
+                fastmoss_url=(shop.get("fastmoss_url") or "").replace("/zh/", "/en/") or None,
+                week_start=shop.get("week_start", current_week),
+                matched_domain=shop.get("matched_domain"),
+                wow_sales_pct=wow_sales,
+                wow_gmv_pct=wow_gmv,
+                is_new=is_new,
+            ))
+
+        # Apply filter
+        if filter == "new":
+            items = [i for i in items if i.is_new]
+        elif filter == "rising":
+            items = [i for i in items if i.wow_sales_pct is not None and i.wow_sales_pct > 0]
+        elif filter == "falling":
+            items = [i for i in items if i.wow_sales_pct is not None and i.wow_sales_pct < 0]
+
+        # Sort by WoW if requested
+        if sort_by == "wow_sales":
+            items.sort(key=lambda x: x.wow_sales_pct or 0, reverse=True)
+        elif sort_by == "wow_gmv":
+            items.sort(key=lambda x: x.wow_gmv_pct or 0, reverse=True)
+
+        total_new = sum(1 for i in items if i.is_new) if filter == "all" else 0
+        total_filtered = len(items)
+
+        # Paginate
+        start = (page - 1) * limit
+        items = items[start:start + limit]
+
+        return TikTokWeeklyResponse(
+            shops=items,
+            total=total_filtered if filter != "all" else total_count,
+            page=page,
+            limit=limit,
+            week_start=current_week,
+            prev_week_start=prev_week,
+            total_new=total_new,
+        )
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/v2/tiktok/shop/{shop_name}/history", response_model=TikTokShopHistoryResponse, tags=["TikTok"])
+async def tiktok_shop_history(shop_name: str, api_key: str = Depends(verify_api_key)):
+    """Get weekly time-series for a single TikTok shop."""
+    import requests as _requests
+
+    try:
+        client = supabase_client or get_supabase_client()
+        resp = _requests.get(
+            f"{client.rest_url}/tiktok_shop_weekly",
+            headers=client.headers,
+            params={
+                "select": "shop_name,matched_domain,category,week_start,sales_count,gmv,products,rating",
+                "shop_name": f"eq.{shop_name}",
+                "order": "week_start.asc",
+            },
+            timeout=15,
+        )
+        rows = resp.json()
+        if not rows:
+            raise HTTPException(status_code=404, detail=f"Shop not found: {shop_name}")
+
+        return TikTokShopHistoryResponse(
+            shop_name=shop_name,
+            matched_domain=rows[0].get("matched_domain"),
+            category=rows[0].get("category"),
+            history=[TikTokShopHistoryItem(
+                week_start=r["week_start"],
+                sales_count=r.get("sales_count"),
+                gmv=r.get("gmv"),
+                products=r.get("products"),
+                rating=r.get("rating"),
+            ) for r in rows],
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/v2/tiktok/shop-for-domain/{domain}", response_model=TikTokShopForDomainResponse, tags=["TikTok"])
+async def tiktok_shop_for_domain(domain: str, api_key: str = Depends(verify_api_key)):
+    """Get TikTok Shop data for a company by its domain (for enrichment card).
+
+    Searches by matched_domain first, then falls back to fuzzy name matching
+    against the company_name in enriched_companies.
+    """
+    import requests as _requests
+
+    try:
+        client = supabase_client or get_supabase_client()
+        clean_domain = domain.lower().strip()
+
+        # Strategy 1: Search by matched_domain (pre-computed during import)
+        resp = _requests.get(
+            f"{client.rest_url}/tiktok_shop_weekly",
+            headers=client.headers,
+            params={
+                "select": "shop_name,sales_count,gmv,products,rating,influencers,fastmoss_url,week_start",
+                "matched_domain": f"eq.{clean_domain}",
+                "order": "week_start.desc",
+                "limit": "2",
+            },
+            timeout=15,
+        )
+        rows = resp.json()
+
+        # Strategy 2: If no match by domain, try by company name
+        if not rows:
+            # Get the company_name for this domain
+            company_rows = client.select(
+                "enriched_companies",
+                columns="company_name",
+                eq={"domain": clean_domain},
+                limit=1,
+            )
+            company_name = (company_rows[0].get("company_name") or "") if company_rows else ""
+
+            if company_name:
+                # Search tiktok_shop_weekly by shop_name matching company_name
+                resp = _requests.get(
+                    f"{client.rest_url}/tiktok_shop_weekly",
+                    headers=client.headers,
+                    params={
+                        "select": "shop_name,sales_count,gmv,products,rating,influencers,fastmoss_url,week_start",
+                        "shop_name": f"ilike.{company_name}",
+                        "order": "week_start.desc",
+                        "limit": "2",
+                    },
+                    timeout=15,
+                )
+                rows = resp.json()
+
+                # If exact match didn't work, try partial match
+                if not rows:
+                    resp = _requests.get(
+                        f"{client.rest_url}/tiktok_shop_weekly",
+                        headers=client.headers,
+                        params={
+                            "select": "shop_name,sales_count,gmv,products,rating,influencers,fastmoss_url,week_start",
+                            "shop_name": f"ilike.*{company_name}*",
+                            "order": "week_start.desc",
+                            "limit": "2",
+                        },
+                        timeout=15,
+                    )
+                    rows = resp.json()
+
+                # Update matched_domain for future lookups if we found a match
+                if rows:
+                    try:
+                        _requests.patch(
+                            f"{client.rest_url}/tiktok_shop_weekly",
+                            headers=client.headers,
+                            params={"shop_name": f"eq.{rows[0]['shop_name']}"},
+                            json={"matched_domain": clean_domain},
+                            timeout=10,
+                        )
+                    except Exception:
+                        pass
+
+        if not rows:
+            return TikTokShopForDomainResponse(has_data=False)
+
+        latest = rows[0]
+        wow_sales = None
+        wow_gmv = None
+
+        if len(rows) > 1:
+            prev = rows[1]
+            if prev.get("sales_count") and latest.get("sales_count") and prev["sales_count"] > 0:
+                wow_sales = round(((latest["sales_count"] - prev["sales_count"]) / prev["sales_count"]) * 100, 1)
+            if prev.get("gmv") and latest.get("gmv") and prev["gmv"] > 0:
+                wow_gmv = round(((latest["gmv"] - prev["gmv"]) / prev["gmv"]) * 100, 1)
+
+        return TikTokShopForDomainResponse(
+            shop_name=latest.get("shop_name"),
+            sales_count=latest.get("sales_count"),
+            gmv=latest.get("gmv"),
+            products=latest.get("products"),
+            rating=latest.get("rating"),
+            influencers=latest.get("influencers"),
+            fastmoss_url=(latest.get("fastmoss_url") or "").replace("/zh/", "/en/") or None,
+            week_start=latest.get("week_start"),
+            wow_sales_pct=wow_sales,
+            wow_gmv_pct=wow_gmv,
+            has_data=True,
+        )
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 # Run with: uvicorn api.main:app --reload

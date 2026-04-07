@@ -19,7 +19,7 @@ Arquitectura de 3 capas que separa razonamiento AI de ejecución determinística
 ## Estructura del Proyecto
 ```
 tools/                    # 18 módulos Python (ejecución determinística)
-├── orchestrator/         #   run_enrichment.py (pipeline 14 pasos), batch_runner.py
+├── orchestrator/         #   run_enrichment.py (pipeline 16 pasos: 0-15), batch_runner.py
 ├── core/                 #   url_normalizer, web_scraper, cache_manager, google_search
 ├── detection/            #   detect_ecommerce_platform, detect_geography, detect_fulfillment
 ├── social/               #   extract_social_links, apify_instagram, apify_meta_ads, tiktok_ads
@@ -30,13 +30,13 @@ tools/                    # 18 módulos Python (ejecución determinística)
 ├── contacts/             #   apollo_enrichment
 ├── hubspot/              #   hubspot_lookup
 ├── orders_estimator/     #   predict.py, train.py, config, features, evaluate
-├── retail/               #   detect_distributors, own_stores, multibrand, marketplaces
+├── retail/               #   detect_distributors, own_stores, multibrand, marketplaces, import_fastmoss
 ├── export/               #   supabase_writer, google_sheets_writer (deprecated)
-├── scoring/              #   instagram_scoring
+├── scoring/              #   instagram_scoring, potential_scoring, backfill_scores
 ├── logistics/            #   ig_complaints analysis, supabase_cron_runner
 └── models/               #   enrichment_result.py (dataclass 39 campos)
 workflows/                # SOPs: enrichment.md, enrichment_retail.md, orders_estimation.md
-backend/                  # FastAPI API (api/main.py ~750 líneas)
+backend/                  # FastAPI API (api/main.py ~950 líneas)
 ├── api/models/schemas.py #   Pydantic models (request/response)
 frontend/                 # Next.js app (app/, components/)
 .tmp/                     # Cache, modelos LightGBM, datos intermedios (descartable)
@@ -65,9 +65,10 @@ docs/                     # Documentación técnica detallada
 - Pipeline (`run_enrichment.py`) NUNCA lanza excepciones — siempre retorna EnrichmentResult
 - Cache: 7 días TTL por dominio por tool en `.tmp/cache/{domain}/{tool}.json`
 - Callbacks: `on_step(name, status, duration_ms, detail)` para streaming SSE
-- EnrichmentResult: 39 campos canónicos (ver `tools/models/enrichment_result.py`)
+- EnrichmentResult: 86 campos canónicos (ver `tools/models/enrichment_result.py`), incluye retail + scoring
 - Categorías permitidas: 24 categorías fijas en `tools/ai/classify_category.py`
-- Geography: COL | MEX | UNKNOWN — reconciliación con fallbacks (currency, TLD, Apollo)
+- Geography: COL | MEX — obligatorio desde API (confianza 1.0). Fallback auto-detect solo en batch/CLI
+- Marketplaces por país: COL (MercadoLibre, Rappi) | MEX (MercadoLibre, Amazon, Walmart, Liverpool, Coppel, TikTok Shop)
 
 ## Reglas Estrictas
 

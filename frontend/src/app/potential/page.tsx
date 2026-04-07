@@ -5,6 +5,7 @@ import { Header } from '@/components/Header';
 import { PotentialTierBadge } from '@/components/PotentialTierBadge';
 import { ScoreBar } from '@/components/ScoreBar';
 import { getCompanies, getCompany } from '@/lib/api';
+import { RetailDrawerSection } from '@/components/RetailDrawerSection';
 import type { CompanyListItem, EnrichmentV2Results } from '@/lib/types';
 
 function fmt(n: number | null | undefined): string {
@@ -111,6 +112,8 @@ function DetailDrawer({ domain, onClose }: { domain: string; onClose: () => void
                 <Row label="Productos" value={fmt(data.product_count)} />
                 <Row label="Precio promedio" value={data.avg_price != null ? `${data.currency || ''} ${fmt(data.avg_price)}` : undefined} />
               </Section>
+
+              <RetailDrawerSection data={data} />
 
               <Section title="HubSpot CRM">
                 <Row label="Estado" value={data.hubspot_company_id ? 'En CRM' : 'No encontrada'} />

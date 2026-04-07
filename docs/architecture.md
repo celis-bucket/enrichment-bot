@@ -27,34 +27,36 @@ FastAPI (backend/api/main.py)
   │ verify_api_key() → run_enrichment() en thread
   ▼
 Orchestrator (tools/orchestrator/run_enrichment.py)
-  │ 14 steps secuenciales, cada uno con on_step callback
+  │ 16 steps secuenciales (0-15), cada uno con on_step callback
+  │ Geography obligatorio desde API (COL/MEX)
   │
-  ├─ Step 0: Resolve URL (Serper si es nombre de marca)
+  ├─ Step 0: Resolve URL (SearchAPI si es nombre de marca)
   ├─ Step 1: Normalize URL → domain
   ├─ Step 2: Scrape website → HTML
   ├─ Step 3: Detect platform (Shopify/VTEX/WooCommerce/Magento)
-  ├─ Step 4: Detect geography (COL/MEX)
+  ├─ Step 4: Geography (user-provided con confianza 1.0, o auto-detect)
   ├─ Step 5a: Extract social links del HTML
   ├─ Step 5b: Instagram metrics (SearchAPI → followers, engagement)
   ├─ Step 6: META Ads count (SearchAPI → Meta Ad Library)
-  ├─ Step 6b: TikTok Ads count (SearchAPI → TikTok Ads Library)
+  ├─ Step 6b: Facebook/TikTok followers + TikTok Ads
   ├─ Step 7: Scrape product catalog (product_count, prices)
   ├─ Step 8: Estimate traffic (señales indirectas)
-  ├─ Step 9: Google Demand scoring (3 queries Serper)
-  ├─ Step 10: Detect fulfillment provider (pasivo, del HTML)
-  ├─ Step 11: Classify category (Claude Sonnet tool_use)
+  ├─ Step 9: Google Demand scoring (3 queries SearchAPI)
+  ├─ Step 10: Classify category (Claude Sonnet tool_use)
   ├─ Step 12: Apollo enrichment (contacts, company info)
-  ├─ Step 12b: Geography reconciliation (fallbacks: currency, TLD, Apollo)
-  └─ Step 13: HubSpot lookup (company, deals, contacts)
+  ├─ Step 12b: Geography reconciliation (solo si no fue user-provided)
+  ├─ Step 13: HubSpot lookup (company, deals, contacts)
+  ├─ Step 14: Retail enrichment (distributors, stores, marketplaces)
+  └─ Step 15: Potential scoring (ecom + retail + fit → tier)
   │
   ▼
 Orders Estimator (tools/orders_estimator/predict.py)
   │ LightGBM quantile regression → P10, P50, P90
   ▼
 Supabase Writer (tools/export/supabase_writer.py)
-  │ Upsert en tabla enriched_companies
+  │ Upsert en tabla enriched_companies (ecom + retail + scores)
   ▼
-SSE Response → Frontend muestra resultado
+SSE Response → Frontend muestra resultado completo
 ```
 
 ### Batch Processing

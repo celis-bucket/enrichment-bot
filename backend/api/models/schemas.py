@@ -3,15 +3,17 @@ Pydantic models for API request/response schemas
 """
 
 from datetime import datetime
-from typing import Optional, List
-from pydantic import BaseModel, Field
+import json
+from typing import Any, Optional, List
+from pydantic import BaseModel, Field, field_validator
 
 
 # ===== Request Models =====
 
 class SyncEnrichmentRequest(BaseModel):
     """Request model for synchronous enrichment analysis"""
-    url: str = Field(..., description="E-commerce URL or brand name with country (e.g., 'Armatura Colombia')")
+    url: str = Field(..., description="E-commerce URL or brand name (e.g., 'armatura.com.co')")
+    geography: str = Field(..., description="Country code: COL or MEX", pattern=r"^(COL|MEX)$")
 
 
 # ===== Response Models =====
@@ -146,6 +148,20 @@ class CompanyListItem(BaseModel):
     hubspot_company_id: Optional[str] = None
     hubspot_deal_count: Optional[int] = None
     hubspot_deal_stage: Optional[str] = None
+    # Retail Channels
+    has_distributors: Optional[bool] = None
+    has_own_stores: Optional[bool] = None
+    has_multibrand_stores: Optional[bool] = None
+    multibrand_store_names: Optional[Any] = None
+    on_mercadolibre: Optional[bool] = None
+    on_amazon: Optional[bool] = None
+    on_rappi: Optional[bool] = None
+    on_walmart: Optional[bool] = None
+    on_liverpool: Optional[bool] = None
+    on_coppel: Optional[bool] = None
+    on_tiktok_shop: Optional[bool] = None
+    marketplace_names: Optional[Any] = None
+    retail_confidence: Optional[float] = None
     # Potential Scoring
     ecommerce_size_score: Optional[int] = None
     retail_size_score: Optional[int] = None
@@ -181,8 +197,10 @@ class LeadListItem(BaseModel):
     worth_full_enrichment: Optional[bool] = None
     enrichment_type: Optional[str] = None
     hubspot_company_id: Optional[str] = None
+    hubspot_company_url: Optional[str] = None
     hubspot_deal_stage: Optional[str] = None
     hubspot_deal_count: Optional[int] = None
+    source: Optional[str] = None
     hs_lead_stage: Optional[str] = None
     hs_lead_label: Optional[str] = None
     hs_lead_owner: Optional[str] = None
@@ -194,6 +212,20 @@ class LeadListItem(BaseModel):
     overall_potential_score: Optional[int] = None
     potential_tier: Optional[str] = None
     predicted_orders_p90: Optional[int] = None
+    # Retail Channels
+    has_distributors: Optional[bool] = None
+    has_own_stores: Optional[bool] = None
+    has_multibrand_stores: Optional[bool] = None
+    multibrand_store_names: Optional[Any] = None
+    on_mercadolibre: Optional[bool] = None
+    on_amazon: Optional[bool] = None
+    on_rappi: Optional[bool] = None
+    on_walmart: Optional[bool] = None
+    on_liverpool: Optional[bool] = None
+    on_coppel: Optional[bool] = None
+    on_tiktok_shop: Optional[bool] = None
+    marketplace_names: Optional[Any] = None
+    retail_confidence: Optional[float] = None
     tool_coverage_pct: Optional[float] = None
     updated_at: Optional[str] = None
 
@@ -267,6 +299,114 @@ class HubSpotContact(BaseModel):
     name: Optional[str] = None
     email: Optional[str] = None
     title: Optional[str] = None
+
+
+# ===== TikTok Shop Models =====
+
+class TikTokShopWeeklyItem(BaseModel):
+    """Single TikTok Shop from the weekly ranking"""
+    shop_name: str
+    company_name: Optional[str] = None
+    category: Optional[str] = None
+    rating: Optional[float] = None
+    sales_count: Optional[float] = None
+    gmv: Optional[float] = None
+    products: Optional[int] = None
+    influencers: Optional[int] = None
+    fastmoss_url: Optional[str] = None
+    week_start: str
+    matched_domain: Optional[str] = None
+    wow_sales_pct: Optional[float] = None
+    wow_gmv_pct: Optional[float] = None
+    is_new: bool = False
+
+
+class TikTokWeeklyResponse(BaseModel):
+    """Paginated weekly TikTok Shop ranking"""
+    shops: List[TikTokShopWeeklyItem] = Field(default_factory=list)
+    total: int = 0
+    page: int = 1
+    limit: int = 50
+    week_start: Optional[str] = None
+    prev_week_start: Optional[str] = None
+    total_new: int = 0
+
+
+class TikTokShopHistoryItem(BaseModel):
+    """Single week snapshot for a shop"""
+    week_start: str
+    sales_count: Optional[float] = None
+    gmv: Optional[float] = None
+    products: Optional[int] = None
+    rating: Optional[float] = None
+
+
+class TikTokShopHistoryResponse(BaseModel):
+    """Time-series history for a single shop"""
+    shop_name: str
+    matched_domain: Optional[str] = None
+    category: Optional[str] = None
+    history: List[TikTokShopHistoryItem] = Field(default_factory=list)
+
+
+class TikTokShopForDomainResponse(BaseModel):
+    """TikTok Shop data for a single enriched company"""
+    shop_name: Optional[str] = None
+    sales_count: Optional[float] = None
+    gmv: Optional[float] = None
+    products: Optional[int] = None
+    rating: Optional[float] = None
+    influencers: Optional[int] = None
+    fastmoss_url: Optional[str] = None
+    week_start: Optional[str] = None
+    wow_sales_pct: Optional[float] = None
+    wow_gmv_pct: Optional[float] = None
+    has_data: bool = False
+
+
+# ===== Team Prospecting Panel Models =====
+
+class TeamStatsResponse(BaseModel):
+    """Aggregated KPIs for one SDR"""
+    owner: str
+    total_leads: int = 0
+    tier_distribution: dict = Field(default_factory=dict)
+    stage_distribution: dict = Field(default_factory=dict)
+    leads_not_enriched: int = 0
+    leads_worth_enrichment: int = 0
+    leads_cold_30d: int = 0
+    leads_stale_6m: int = 0
+    enrichment_pct: float = 0.0
+    avg_potential_score: float = 0.0
+
+
+class TeamAlert(BaseModel):
+    """A single actionable alert for an SDR"""
+    alert_type: str
+    title: str
+    severity: str  # "red", "yellow", "green"
+    count: int
+    description: str
+    affected_domains: List[str] = Field(default_factory=list)
+
+
+class TeamAlertsResponse(BaseModel):
+    """Computed alerts for one SDR"""
+    owner: str
+    alerts: List[TeamAlert] = Field(default_factory=list)
+
+
+class TeamLeadListResponse(BaseModel):
+    """Paginated lead list for a specific SDR"""
+    companies: List[LeadListItem] = Field(default_factory=list)
+    total: int = 0
+    page: int = 1
+    limit: int = 25
+
+
+class SpicedDataRequest(BaseModel):
+    """Request model for saving SPICED diagnostic form data"""
+    spiced_data: dict = Field(..., description="Full form data as JSON object")
 
 
 class HubSpotDetailResponse(BaseModel):

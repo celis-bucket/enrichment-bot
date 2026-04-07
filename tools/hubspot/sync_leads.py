@@ -33,12 +33,22 @@ LEAD_STAGE_MAP = {
     "unqualified-stage-id": "Descartado",
 }
 
-# Only sync these stages (exclude Descartado and Negocio abierto)
+# Stages eligible for new lite enrichment
 ACTIVE_STAGES = {
     "new-stage-id",
     "189401210",
     "attempting-stage-id",
     "connected-stage-id",
+}
+
+# All stages to sync (includes inactive — to update stage changes in Supabase)
+ALL_SYNC_STAGES = {
+    "new-stage-id",
+    "189401210",
+    "attempting-stage-id",
+    "connected-stage-id",
+    "qualified-stage-id",
+    "unqualified-stage-id",
 }
 
 LEAD_PROPERTIES = [
@@ -94,8 +104,8 @@ def _api_request(method: str, url: str, json_body: dict = None, params: dict = N
 
 def fetch_all_leads(on_progress: Callable = None) -> Dict[str, Any]:
     """
-    Fetch all active leads from HubSpot Lead pipeline.
-    Filters to only active stages (excludes Descartado and Negocio abierto).
+    Fetch all leads from HubSpot Lead pipeline (all stages).
+    Includes Descartado and Negocio abierto so we can update stage changes in Supabase.
 
     Returns:
         {success, data: {leads: [...], total_fetched, active_count}, error}
@@ -107,12 +117,12 @@ def fetch_all_leads(on_progress: Callable = None) -> Dict[str, Any]:
     after = None
     page = 0
 
-    # Build filter for active stages only
+    # Fetch all pipeline stages to keep Supabase in sync
     filter_groups = [{
         "filters": [{
             "propertyName": "hs_pipeline_stage",
             "operator": "IN",
-            "values": list(ACTIVE_STAGES),
+            "values": list(ALL_SYNC_STAGES),
         }]
     }]
 
@@ -295,6 +305,9 @@ def sync_leads(
     to_update = []
     skipped = 0
 
+    # Reverse map to check if a stage is active (eligible for new enrichment)
+    _active_stage_names = {LEAD_STAGE_MAP[s] for s in ACTIVE_STAGES if s in LEAD_STAGE_MAP}
+
     for lead in leads:
         cid = lead["company_id"]
         company = company_details.get(cid, {})
@@ -311,19 +324,18 @@ def sync_leads(
         if not domain and company.get("domain"):
             domain = company["domain"].lower()
 
+        is_active_stage = lead["lead_stage"] in _active_stage_names
+
         if domain and domain.lower() in existing_domains:
-            existing = existing_domains[domain.lower()]
-            if existing.get("enrichment_type") == "full":
-                skipped += 1
-                continue
-            # Existing lite record — update lead stage/label
+            # Already in DB — always update stage/label to keep in sync
             to_update.append({
                 "domain": domain,
                 "hs_lead_stage": lead["lead_stage"],
                 "hs_lead_label": lead["lead_label"],
                 "source": "hubspot_leads",
             })
-        else:
+        elif is_active_stage:
+            # New lead in active stage — enrich it
             to_enrich.append({
                 "company_name": name,
                 "website_url": website,
@@ -331,6 +343,8 @@ def sync_leads(
                 "lead_stage": lead["lead_stage"],
                 "lead_label": lead["lead_label"],
             })
+        else:
+            skipped += 1  # New lead in Descartado/Negocio abierto — skip
 
     _progress(f"To enrich: {len(to_enrich)} new, To update: {len(to_update)}, Skipped (full): {skipped}")
 
