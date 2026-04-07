@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { Header } from '@/components/Header';
 import { ScoreBar } from '@/components/ScoreBar';
 import { PotentialTierBadge } from '@/components/PotentialTierBadge';
-import { getLeads, getCompany, getHubSpotDetail, analyzeUrlV2, syncLeads, submitFeedback } from '@/lib/api';
+import { getLeads, getCompany, getHubSpotDetail, analyzeUrlV2, syncLeads, refreshLeadData, submitFeedback } from '@/lib/api';
 import type { LeadListItem, EnrichmentV2Results, PipelineStep, ApolloContact, HubSpotContact } from '@/lib/types';
 
 function fmt(n: number | null | undefined): string {
@@ -494,6 +494,8 @@ export default function LeadsPage() {
   const [enrichingDomain, setEnrichingDomain] = useState<string | null>(null);
   const [syncing, setSyncing] = useState(false);
   const [syncMsg, setSyncMsg] = useState('');
+  const [refreshing, setRefreshing] = useState(false);
+  const [refreshMsg, setRefreshMsg] = useState('');
 
   const fetchLeads = useCallback(async () => {
     setIsLoading(true);
@@ -538,6 +540,22 @@ export default function LeadsPage() {
     }
   };
 
+  const handleRefreshHubSpot = async () => {
+    setRefreshing(true);
+    setRefreshMsg('Iniciando refresh...');
+    try {
+      await refreshLeadData(
+        (detail) => setRefreshMsg(detail),
+        () => { setRefreshMsg('Refresh completado'); fetchLeads(); },
+        (err) => { setRefreshMsg(`Error: ${err}`); },
+      );
+    } catch (err) {
+      setRefreshMsg(`Error: ${err}`);
+    } finally {
+      setTimeout(() => { setRefreshing(false); setRefreshMsg(''); }, 3000);
+    }
+  };
+
   return (
     <div className="min-h-screen bg-melonn-surface">
       <Header />
@@ -552,12 +570,20 @@ export default function LeadsPage() {
             </p>
           </div>
           <div className="flex items-center gap-3">
-            {syncMsg && (
-              <span className="text-xs text-gray-500 max-w-[300px] truncate">{syncMsg}</span>
+            {(syncMsg || refreshMsg) && (
+              <span className="text-xs text-gray-500 max-w-[350px] truncate">{syncMsg || refreshMsg}</span>
             )}
             <button
+              onClick={handleRefreshHubSpot}
+              disabled={refreshing || syncing}
+              className="px-4 py-2 rounded-lg border border-melonn-purple text-melonn-purple text-sm font-medium
+                         hover:bg-melonn-purple/5 transition-colors disabled:opacity-50 whitespace-nowrap"
+            >
+              {refreshing ? 'Refreshing...' : 'Refresh Data'}
+            </button>
+            <button
               onClick={handleSync}
-              disabled={syncing}
+              disabled={syncing || refreshing}
               className="px-4 py-2 rounded-lg bg-melonn-purple text-white text-sm font-medium
                          hover:bg-melonn-purple/90 transition-colors disabled:opacity-50 whitespace-nowrap"
             >

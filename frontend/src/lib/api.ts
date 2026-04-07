@@ -261,6 +261,59 @@ export async function syncLeads(
   }
 }
 
+export async function refreshLeadData(
+  onProgress: (detail: string) => void,
+  onResult: (data: Record<string, unknown>) => void,
+  onError: (error: string) => void,
+): Promise<void> {
+  const response = await fetch(`${API_BASE}/api/v2/leads/refresh-hubspot`, {
+    method: 'POST',
+    headers: authHeaders(),
+  });
+
+  if (!response.ok) {
+    onError(`Refresh failed: HTTP ${response.status}`);
+    return;
+  }
+
+  const reader = response.body?.getReader();
+  if (!reader) {
+    onError('No response body');
+    return;
+  }
+
+  const decoder = new TextDecoder();
+  let buffer = '';
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+
+    buffer += decoder.decode(value, { stream: true });
+    const lines = buffer.split('\n');
+    buffer = lines.pop() || '';
+
+    for (const line of lines) {
+      if (!line.startsWith('data: ')) continue;
+      const jsonStr = line.slice(6).trim();
+      if (!jsonStr) continue;
+
+      try {
+        const msg = JSON.parse(jsonStr);
+        if (msg.type === 'progress') {
+          onProgress(msg.detail || '');
+        } else if (msg.type === 'result') {
+          onResult(msg.data || {});
+        } else if (msg.type === 'error') {
+          onError(msg.detail || 'Refresh error');
+        }
+      } catch {
+        // skip malformed
+      }
+    }
+  }
+}
+
 export async function getFeedback(domain: string): Promise<FeedbackItem[]> {
   try {
     const response = await fetch(

@@ -284,38 +284,45 @@ def _patch_supabase(domain, update):
         return False
 
 
-def main():
+def refresh_lead_data(on_progress=None):
+    """
+    Refresh HubSpot lead data (stage, owner, activity, tasks, deals) for existing leads.
+    Returns dict with summary. Accepts optional on_progress(msg: str) callback.
+    """
     from export.supabase_writer import get_client
 
-    print("Backfill Lead Data v2")
-    print("=" * 60)
+    def _log(msg):
+        print(msg)
+        if on_progress:
+            on_progress(msg)
 
+    _log("Refresh Lead Data: iniciando...")
     client = get_client()
 
     # Step 1: Fetch leads
-    print("Fetching active leads from HubSpot...")
+    _log("Obteniendo leads activos de HubSpot...")
     leads = fetch_all_active_leads()
-    print(f"  {len(leads)} unique active leads")
+    _log(f"  {len(leads)} leads activos encontrados")
 
     # Step 2: Resolve owners
     owner_ids = set(l["owner_id"] for l in leads if l["owner_id"])
-    print(f"Resolving {len(owner_ids)} owners...")
+    _log(f"Resolviendo {len(owner_ids)} owners...")
     owners = resolve_owners(owner_ids)
-    print(f"  Resolved {len(owners)} owners")
+    _log(f"  {len(owners)} owners resueltos")
 
     # Step 3: Get last lost deal dates
-    print("Fetching last lost deal dates...")
+    _log("Obteniendo fechas de cierre perdido...")
     lost_dates = fetch_last_lost_deal_dates(client)
-    print(f"  {len(lost_dates)} lost deal dates found")
+    _log(f"  {len(lost_dates)} fechas encontradas")
 
     # Step 4: Fetch activity + tasks for all company IDs
     company_ids = list(set(l["company_id"] for l in leads if l["company_id"]))
-    print(f"Fetching activity and tasks for {len(company_ids)} companies...")
+    _log(f"Obteniendo actividad y tareas para {len(company_ids)} empresas...")
     activity_data = fetch_company_activity_and_tasks(company_ids)
-    print(f"  Got activity data for {len(activity_data)} companies")
+    _log(f"  Actividad obtenida para {len(activity_data)} empresas")
 
     # Step 5: Build lookups from Supabase (preserve original case for PATCH)
-    print("Building Supabase lookups...")
+    _log("Construyendo lookups de Supabase...")
     existing = client.select("enriched_companies", columns="domain,hubspot_company_id", eq={"source": "hubspot_leads"})
     sb_by_domain = {}  # lowercase -> original case
     sb_by_cid = {}     # company_id -> original case domain
@@ -326,10 +333,10 @@ def main():
         cid = r.get("hubspot_company_id")
         if cid and d:
             sb_by_cid[str(cid)] = d  # preserve original case
-    print(f"  {len(sb_by_domain)} by domain, {len(sb_by_cid)} by company_id")
+    _log(f"  {len(sb_by_domain)} por dominio, {len(sb_by_cid)} por company_id")
 
     # Step 6: Update
-    print("Updating Supabase...")
+    _log("Actualizando Supabase...")
     updated = 0
     not_found = 0
 
@@ -378,7 +385,17 @@ def main():
         else:
             not_found += 1
 
-    print(f"\nDone: {updated} updated, {not_found} not matched")
+    _log(f"Listo: {updated} actualizados, {not_found} no encontrados")
+    return {
+        "success": True,
+        "total_leads": len(leads),
+        "updated": updated,
+        "not_found": not_found,
+    }
+
+
+def main():
+    refresh_lead_data()
 
 
 if __name__ == "__main__":

@@ -668,6 +668,46 @@ async def sync_leads_endpoint(api_key: str = Depends(verify_api_key)):
     return StreamingResponse(event_generator(), media_type="text/event-stream")
 
 
+@app.post("/api/v2/leads/refresh-hubspot", tags=["Leads"])
+async def refresh_hubspot_data_endpoint(api_key: str = Depends(verify_api_key)):
+    """Refresh HubSpot data (stage, owner, activity, tasks) for existing leads. Returns SSE stream."""
+    from starlette.responses import StreamingResponse
+    import json as _json
+    import queue
+    import threading
+
+    progress_queue = queue.Queue()
+
+    def _on_progress(msg: str):
+        progress_queue.put({"type": "progress", "detail": msg})
+
+    def _run_refresh():
+        try:
+            from hubspot.backfill_lead_data import refresh_lead_data
+            result = refresh_lead_data(on_progress=_on_progress)
+            progress_queue.put({"type": "result", "data": result})
+        except Exception as e:
+            progress_queue.put({"type": "error", "detail": str(e)})
+        finally:
+            progress_queue.put(None)  # sentinel
+
+    thread = threading.Thread(target=_run_refresh, daemon=True)
+    thread.start()
+
+    async def event_generator():
+        while True:
+            try:
+                msg = progress_queue.get(timeout=600)
+            except queue.Empty:
+                yield f"data: {_json.dumps({'type': 'error', 'detail': 'Refresh timeout'})}\n\n"
+                break
+            if msg is None:
+                break
+            yield f"data: {_json.dumps(msg)}\n\n"
+
+    return StreamingResponse(event_generator(), media_type="text/event-stream")
+
+
 @app.get("/api/v2/enrichment/companies/{domain}", tags=["Companies"])
 async def get_company(domain: str, api_key: str = Depends(verify_api_key)):
     """Get full enrichment data for a single company by domain."""
