@@ -1,10 +1,30 @@
 'use client';
 
+import { useState } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
+import { refreshLeadData } from '@/lib/api';
 
 export function Header() {
   const pathname = usePathname();
+  const [refreshing, setRefreshing] = useState(false);
+  const [refreshMsg, setRefreshMsg] = useState('');
+
+  const handleRefreshHubSpot = async () => {
+    setRefreshing(true);
+    setRefreshMsg('Iniciando refresh...');
+    try {
+      await refreshLeadData(
+        (detail) => setRefreshMsg(detail),
+        () => { setRefreshMsg('Refresh completado'); },
+        (err) => { setRefreshMsg(`Error: ${err}`); },
+      );
+    } catch (err) {
+      setRefreshMsg(`Error: ${err}`);
+    } finally {
+      setTimeout(() => { setRefreshing(false); setRefreshMsg(''); }, 3000);
+    }
+  };
 
   return (
     <header className="bg-melonn-navy">
@@ -101,7 +121,21 @@ export function Header() {
             </Link>
           </nav>
         </div>
-        <div className="w-3 h-3 rounded-full bg-melonn-green" />
+        <div className="flex items-center gap-2 shrink-0 ml-2">
+          {refreshMsg && (
+            <span className="text-[10px] text-melonn-purple-light max-w-[200px] truncate hidden sm:block">{refreshMsg}</span>
+          )}
+          <button
+            onClick={handleRefreshHubSpot}
+            disabled={refreshing}
+            title="Actualizar datos de HubSpot (stages, owners, actividad) para leads existentes"
+            className="px-2.5 py-1.5 rounded-md text-xs font-medium border border-melonn-purple-light text-melonn-purple-light
+                       hover:bg-melonn-navy-light transition-colors disabled:opacity-50 whitespace-nowrap"
+          >
+            {refreshing ? 'Refreshing...' : 'Refresh HubSpot'}
+          </button>
+          <div className="w-3 h-3 rounded-full bg-melonn-green" />
+        </div>
       </div>
     </header>
   );
