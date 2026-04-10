@@ -89,6 +89,7 @@ docs/                     # Documentación técnica detallada
 - Usar Supabase (no Google Sheets) para persistencia de resultados
 - Respetar cache de 7 días salvo que se pase --skip-cache
 - Preguntar antes de correr herramientas que consuman créditos pagos
+- Actualizar `ENRICHMENT_API.md` cada vez que cambies endpoints, schemas de request/response, autenticación, o comportamiento del API en `backend/api/main.py` o `backend/api/models/schemas.py`
 
 ## Cómo Operar
 1. Lee el workflow relevante en `workflows/`

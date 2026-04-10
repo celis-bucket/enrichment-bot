@@ -3,19 +3,22 @@ FastAPI Application - E-commerce Enrichment API
 
 Main application entry point with routes, middleware, and configuration.
 """
+# ⚠️  When changing endpoints, schemas, or auth behavior,
+#     you MUST also update ENRICHMENT_API.md in the project root.
 
 import os
 import sys
 import time
 import json
 import asyncio
+from pathlib import Path
 import queue
 import threading
 from datetime import datetime
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, HTTPException, Query, Security, Depends
-from fastapi.responses import StreamingResponse
+from fastapi.responses import StreamingResponse, PlainTextResponse, HTMLResponse
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from dotenv import load_dotenv
@@ -208,10 +211,46 @@ async def root():
         "endpoints": {
             "health": "/health",
             "docs": "/docs",
+            "integration_guide": "/api/v2/enrichment/docs/integration-guide",
             "enrichment": "/api/v2/enrichment/analyze-stream"
         }
     }
 
+
+# ===== Integration Guide Endpoint =====
+
+ENRICHMENT_API_MD = Path(__file__).resolve().parent.parent.parent / "ENRICHMENT_API.md"
+
+@app.get("/api/v2/enrichment/docs/integration-guide", tags=["Docs"])
+async def integration_guide(format: str = Query("markdown", enum=["markdown", "html"])):
+    """
+    Serve the ENRICHMENT_API.md integration guide.
+    No authentication required.
+    """
+    if not ENRICHMENT_API_MD.is_file():
+        raise HTTPException(status_code=404, detail="ENRICHMENT_API.md not found")
+
+    content = ENRICHMENT_API_MD.read_text(encoding="utf-8")
+
+    if format == "html":
+        html = f"""<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Enrichment API — Integration Guide</title>
+  <style>
+    body {{ font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, monospace;
+           max-width: 900px; margin: 2rem auto; padding: 0 1rem;
+           background: #0d1117; color: #c9d1d9; line-height: 1.6; }}
+    pre  {{ white-space: pre-wrap; word-wrap: break-word; }}
+    a    {{ color: #58a6ff; }}
+  </style>
+</head>
+<body><pre>{content}</pre></body>
+</html>"""
+        return HTMLResponse(content=html)
+
+    return PlainTextResponse(content=content, media_type="text/markdown")
 
 
 # ===== V2: Enrichment Flow V2 =====
@@ -233,6 +272,20 @@ def _parse_json_list(value) -> list:
         except (json.JSONDecodeError, TypeError):
             return []
     return []
+
+
+def _parse_json_field(value):
+    """Parse a value that might be a JSON string, a dict, or None."""
+    if value is None:
+        return None
+    if isinstance(value, dict):
+        return value
+    if isinstance(value, str):
+        try:
+            return json.loads(value)
+        except (json.JSONDecodeError, TypeError):
+            return None
+    return None
 
 
 def _run_prediction(enrichment_result) -> dict:
@@ -377,6 +430,7 @@ def _build_v2_response(enrichment_result, prediction: dict) -> dict:
         "own_store_count_mex": enrichment_result.own_store_count_mex,
         "has_multibrand_stores": enrichment_result.has_multibrand_stores,
         "multibrand_store_names": enrichment_result.multibrand_store_names or [],
+        "multibrand_store_tiers": enrichment_result.multibrand_store_tiers,
         "on_mercadolibre": enrichment_result.on_mercadolibre,
         "on_amazon": enrichment_result.on_amazon,
         "on_rappi": enrichment_result.on_rappi,
@@ -555,7 +609,7 @@ async def list_companies(
             "ig_followers,ig_size_score,ig_health_score,meta_active_ads_count,"
             "contact_name,contact_email,predicted_orders_p50,predicted_orders_p90,prediction_confidence,"
             "hubspot_company_id,hubspot_deal_count,hubspot_deal_stage,"
-            "has_distributors,has_own_stores,has_multibrand_stores,multibrand_store_names,"
+            "has_distributors,has_own_stores,has_multibrand_stores,multibrand_store_names,multibrand_store_tiers,"
             "on_mercadolibre,on_amazon,on_rappi,on_walmart,on_liverpool,on_coppel,on_tiktok_shop,"
             "marketplace_names,retail_confidence,"
             "ecommerce_size_score,retail_size_score,combined_size_score,"
@@ -626,7 +680,7 @@ async def list_leads(
             "source,hs_lead_stage,hs_lead_label,hs_lead_owner,hs_last_lost_deal_date,hs_lead_created_at,"
             "hs_last_activity_date,hs_activity_count,hs_open_tasks_count,"
             "overall_potential_score,potential_tier,predicted_orders_p90,"
-            "has_distributors,has_own_stores,has_multibrand_stores,multibrand_store_names,"
+            "has_distributors,has_own_stores,has_multibrand_stores,multibrand_store_names,multibrand_store_tiers,"
             "on_mercadolibre,on_amazon,on_rappi,on_walmart,on_liverpool,on_coppel,on_tiktok_shop,"
             "marketplace_names,retail_confidence,"
             "tool_coverage_pct,updated_at"
@@ -767,7 +821,7 @@ _TEAM_COLUMNS = (
     "source,hs_lead_stage,hs_lead_label,hs_lead_owner,hs_last_lost_deal_date,hs_lead_created_at,"
     "hs_last_activity_date,hs_activity_count,hs_open_tasks_count,"
     "overall_potential_score,potential_tier,predicted_orders_p90,"
-    "has_distributors,has_own_stores,has_multibrand_stores,multibrand_store_names,"
+    "has_distributors,has_own_stores,has_multibrand_stores,multibrand_store_names,multibrand_store_tiers,"
     "on_mercadolibre,on_amazon,on_rappi,on_walmart,on_liverpool,on_coppel,on_tiktok_shop,"
     "marketplace_names,retail_confidence,"
     "tool_coverage_pct,updated_at"
@@ -1119,6 +1173,7 @@ async def get_company(domain: str, api_key: str = Depends(verify_api_key)):
             "own_store_count_mex": row.get("own_store_count_mex"),
             "has_multibrand_stores": row.get("has_multibrand_stores"),
             "multibrand_store_names": _parse_json_list(row.get("multibrand_store_names")),
+            "multibrand_store_tiers": _parse_json_field(row.get("multibrand_store_tiers")),
             "on_mercadolibre": row.get("on_mercadolibre"),
             "on_amazon": row.get("on_amazon"),
             "on_rappi": row.get("on_rappi"),

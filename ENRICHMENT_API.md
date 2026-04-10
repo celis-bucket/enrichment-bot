@@ -1,5 +1,7 @@
 # Melonn Enrichment API — Integration Guide
 
+> **Last updated:** 2026-04-10
+
 This document describes how to integrate with Melonn's Enrichment API. Use it to enrich e-commerce companies with data about their platform, social media, ads, traffic, contacts, and estimated order volume.
 
 ## Setup
@@ -110,6 +112,24 @@ curl "${ENRICHMENT_API_URL}/api/v2/enrichment/companies?page=1&limit=10&geograph
 
 ```bash
 curl "${ENRICHMENT_API_URL}/health"
+```
+
+### 6. Integration guide (no auth required)
+
+**`GET /api/v2/enrichment/docs/integration-guide`**
+
+Returns this document (`ENRICHMENT_API.md`) directly from the API. Useful when you need to check the current API contract without accessing the repo.
+
+| Param | Default | Description |
+|-------|---------|-------------|
+| `format` | `markdown` | `markdown` returns raw text; `html` returns a styled page for browsers |
+
+```bash
+# Raw markdown
+curl "${ENRICHMENT_API_URL}/api/v2/enrichment/docs/integration-guide"
+
+# Browser-friendly HTML
+curl "${ENRICHMENT_API_URL}/api/v2/enrichment/docs/integration-guide?format=html"
 ```
 
 ---
