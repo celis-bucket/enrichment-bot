@@ -170,6 +170,50 @@ def _pick_best_company(results: List[dict]) -> dict:
     return candidates_sorted[0]
 
 
+def _generate_domain_variants(domain_no_www: str) -> List[str]:
+    """Generate TLD variants for a domain to increase HubSpot match chances.
+
+    Example: essemskincare.co → [essemskincare.co, www.essemskincare.co,
+             essemskincare.com, essemskincare.com.co]
+    """
+    variants = [domain_no_www, f"www.{domain_no_www}"]
+
+    # Extract base name and current TLD
+    parts = domain_no_www.split(".")
+    if len(parts) >= 2:
+        # Handle .com.co, .com.mx (3-part TLDs)
+        if len(parts) >= 3 and parts[-2] == "com":
+            base = ".".join(parts[:-2])
+            cc = parts[-1]  # co, mx
+            # Add variants: base.co, base.com, base.com.co
+            for tld in [f".{cc}", ".com", f".com.{cc}"]:
+                candidate = base + tld
+                if candidate not in variants:
+                    variants.append(candidate)
+        else:
+            base = ".".join(parts[:-1])
+            tld = parts[-1]
+            # If .co → try .com, .com.co
+            if tld == "co":
+                for alt_tld in [".com", ".com.co"]:
+                    candidate = base + alt_tld
+                    if candidate not in variants:
+                        variants.append(candidate)
+            # If .com → try .co, .com.co
+            elif tld == "com":
+                for alt_tld in [".co", ".com.co"]:
+                    candidate = base + alt_tld
+                    if candidate not in variants:
+                        variants.append(candidate)
+            # If .mx → try .com.mx
+            elif tld == "mx":
+                candidate = base + ".com.mx"
+                if candidate not in variants:
+                    variants.append(candidate)
+
+    return variants
+
+
 def search_company_by_domain(domain: str) -> Dict[str, Any]:
     """
     Search HubSpot for a company matching the given domain.
@@ -190,26 +234,21 @@ def search_company_by_domain(domain: str) -> Dict[str, Any]:
                   "lifecyclestage", "notes_last_contacted"]
 
     # Strategy 1: exact match on domain (fetch up to 10 to handle duplicates)
-    # Search both with and without www. since HubSpot may store either variant
+    # Search both with and without www, plus TLD variants (.co/.com/.com.co)
     domain_no_www = domain.removeprefix("www.")
-    domain_with_www = f"www.{domain_no_www}"
+    domain_variants = _generate_domain_variants(domain_no_www)
+    filter_groups = []
+    for variant in domain_variants:
+        filter_groups.append({
+            "filters": [{
+                "propertyName": "domain",
+                "operator": "EQ",
+                "value": variant,
+            }]
+        })
+    # HubSpot allows max 5 filterGroups — truncate if needed
     body = {
-        "filterGroups": [
-            {
-                "filters": [{
-                    "propertyName": "domain",
-                    "operator": "EQ",
-                    "value": domain_no_www,
-                }]
-            },
-            {
-                "filters": [{
-                    "propertyName": "domain",
-                    "operator": "EQ",
-                    "value": domain_with_www,
-                }]
-            },
-        ],
+        "filterGroups": filter_groups[:5],
         "properties": properties,
         "limit": 10,
     }

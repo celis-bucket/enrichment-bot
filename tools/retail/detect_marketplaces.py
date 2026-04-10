@@ -116,19 +116,18 @@ def _check_html_links(html: str) -> Dict[str, Dict]:
 
         for marketplace, patterns in MARKETPLACE_LINK_PATTERNS.items():
             for pattern in patterns:
-                match = re.search(pattern, html_lower)
-                if match:
-                    # Find the actual URL from <a> tags
-                    url_found = None
-                    for link in all_links:
-                        if re.search(pattern, link, re.IGNORECASE):
-                            url_found = link
-                            break
+                # Only match actual <a href> links, not plain text mentions
+                url_found = None
+                for link in all_links:
+                    if re.search(pattern, link, re.IGNORECASE):
+                        url_found = link
+                        break
+                if url_found:
                     results[marketplace] = {
                         "found": True,
                         "source": "html_link",
                         "url": url_found,
-                        "snippet": match.group(0),
+                        "snippet": url_found[:80],
                     }
                     break  # One match per marketplace is enough
     except Exception:
@@ -193,9 +192,13 @@ def _search_marketplace(brand_name: str, marketplace: str, domain: str,
                         "evidence": f"Found on {site_domain}: {item.get('title', '')[:80]}",
                     }
 
-            # If we have organic results on the marketplace domain, it's a signal
+            # If we have organic results on the marketplace domain, require at least 2
+            # AND brand name must appear in at least one result title to reduce false positives
             marketplace_results = [o for o in organic if site_domain in o.get("link", "").lower()]
-            if len(marketplace_results) >= 1:
+            brand_in_title = any(
+                brand_lower in o.get("title", "").lower() for o in marketplace_results
+            )
+            if len(marketplace_results) >= 2 and brand_in_title:
                 return {
                     "found": True,
                     "url": marketplace_results[0].get("link"),

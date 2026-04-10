@@ -199,8 +199,10 @@ def fetch_company_activity_and_tasks(company_ids):
                 tp = task.get("properties", {})
                 status = tp.get("hs_task_status", "")
                 due = (tp.get("hs_task_due_date") or "")[:10]
-                if status != "COMPLETED" and due and due >= today:
-                    open_count += 1
+                # Count as open if: not completed AND (no due date, or due date is recent/future)
+                if status != "COMPLETED":
+                    if not due or due >= today:
+                        open_count += 1
 
             if cid in results:
                 results[cid]["open_tasks_count"] = open_count
