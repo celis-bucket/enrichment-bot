@@ -13,6 +13,7 @@ RUN pip install --no-cache-dir -r requirements.txt -r backend/requirements.txt
 # Copy application code
 COPY backend/ ./backend/
 COPY tools/ ./tools/
+COPY ENRICHMENT_API.md ./ENRICHMENT_API.md
 
 # Create tmp directories for cache and processing
 RUN mkdir -p .tmp/html .tmp/images .tmp/cache
