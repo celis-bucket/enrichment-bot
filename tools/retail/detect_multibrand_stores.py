@@ -125,24 +125,30 @@ def _extract_store_names_from_page(
         if re.search(r'\b' + re.escape(normalized) + r'\b', text_lower):
             found_stores.add(canonical)
 
-    # Strategy B: Check image alt text (store logos)
+    # Strategy B: Check image alt text (store logos) — use word boundaries
     for img in soup.find_all('img', alt=True):
         alt_lower = img['alt'].strip().lower()
         for normalized, canonical in known_stores.items():
-            if normalized in alt_lower:
+            if re.search(r'\b' + re.escape(normalized) + r'\b', alt_lower):
                 found_stores.add(canonical)
 
     # Strategy C: Check image src filenames (often contain store names)
+    # Require high length ratio to avoid partial matches
     for img in soup.find_all('img', src=True):
         src_lower = img['src'].lower()
+        # Extract just the filename from the URL path
+        src_filename = src_lower.rsplit('/', 1)[-1].split('?')[0]
         for normalized, canonical in known_stores.items():
-            # Only match longer names to avoid false positives from short names
-            if len(normalized) >= 4 and normalized.replace(' ', '') in src_lower.replace('-', '').replace('_', ''):
-                found_stores.add(canonical)
+            norm_compact = normalized.replace(' ', '')
+            if len(norm_compact) >= 5 and norm_compact in src_filename.replace('-', '').replace('_', ''):
+                # Ensure the store name is a significant portion of the filename
+                filename_base = src_filename.rsplit('.', 1)[0].replace('-', '').replace('_', '')
+                if len(norm_compact) / max(len(filename_base), 1) >= 0.5:
+                    found_stores.add(canonical)
 
     # Strategy D: Check <a> hrefs wrapping images — many "where to buy" pages
     # use store logos as clickable images linking to the store's website.
-    # The href URL domain/path often contains the store name.
+    # Match against the href domain only, not the full URL path.
     for a_tag in soup.find_all('a', href=True):
         # Only consider links that wrap images (store logo pattern)
         if not a_tag.find('img'):
@@ -151,8 +157,13 @@ def _extract_store_names_from_page(
         # Skip internal links and empty anchors
         if not href.startswith('http'):
             continue
+        try:
+            href_domain = urlparse(href).netloc.replace('www.', '')
+        except Exception:
+            continue
         for normalized, canonical in known_stores.items():
-            if len(normalized) >= 3 and normalized.replace(' ', '') in href.replace('-', '').replace('_', ''):
+            norm_compact = normalized.replace(' ', '')
+            if len(norm_compact) >= 4 and norm_compact in href_domain.replace('-', '').replace('_', ''):
                 found_stores.add(canonical)
 
     return sorted(found_stores)
@@ -181,11 +192,11 @@ def _extract_store_names_from_homepage(
                 if re.search(r'\b' + re.escape(normalized) + r'\b', text_lower):
                     found_stores.add(canonical)
 
-        # Check image alt text on homepage
+        # Check image alt text on homepage — use word boundaries
         for img in soup.find_all('img', alt=True):
             alt_lower = img['alt'].strip().lower()
             for normalized, canonical in known_stores.items():
-                if len(normalized) >= 4 and normalized in alt_lower:
+                if len(normalized) >= 4 and re.search(r'\b' + re.escape(normalized) + r'\b', alt_lower):
                     found_stores.add(canonical)
 
     except Exception:
@@ -343,11 +354,15 @@ def detect_multibrand_stores(
         store_names = sorted(all_stores)
         has_multibrand = len(store_names) > 0
 
+        # Classify stores into tiers
+        store_tiers = _classify_store_tiers(store_names) if has_multibrand else None
+
         return {
             "success": True,
             "data": {
                 "has_multibrand_stores": has_multibrand,
                 "multibrand_store_names": store_names,
+                "multibrand_store_tiers": store_tiers,
                 "evidence": evidence_list,
             },
             "error": None,
@@ -359,6 +374,37 @@ def detect_multibrand_stores(
             "data": {},
             "error": f"Multibrand store detection error: {str(e)}",
         }
+
+
+# Tier 1: major department stores, large pharmacy chains, specialized retail
+TIER1_STORES = {
+    # Colombia
+    "Falabella", "Exito", "Alkosto", "Homecenter", "Jumbo", "Ktronix",
+    "Olimpica", "Cencosud", "Farmatodo", "Farmacias Pasteur", "Locatel",
+    "Cruz Verde", "La 14", "Metro",
+    # Mexico
+    "Liverpool", "Palacio de Hierro", "Sears", "Suburbia", "Walmart",
+    "Soriana", "HEB", "Sanborns", "Costco", "La Comer", "Chedraui",
+    "Farmacia San Pablo", "Sally Beauty", "Bodega Aurrera", "City Club",
+    "Coppel",
+}
+
+
+def _classify_store_tiers(store_names: List[str]) -> Dict[str, List[str]]:
+    """Classify multibrand stores into Tier 1 (large retailers) and Mayorista (others)."""
+    tier1 = []
+    mayorista = []
+    for store in store_names:
+        if store in TIER1_STORES:
+            tier1.append(store)
+        else:
+            mayorista.append(store)
+    result = {}
+    if tier1:
+        result["tier1"] = sorted(tier1)
+    if mayorista:
+        result["mayorista"] = sorted(mayorista)
+    return result
 
 
 def _get_fallback_stores(geography: Optional[str] = None) -> Dict[str, str]:

@@ -93,20 +93,55 @@ export function RetailChannelsCardV2({ results, domain = '', feedback = [] }: Re
         {/* Tiendas Multimarca */}
         <div>
           <p className="text-xs text-melonn-navy/50 mb-1.5">Tiendas Multimarca</p>
-          <div className="flex flex-wrap gap-1.5">
-            {results.has_multibrand_stores && results.multibrand_store_names?.length ? (
-              results.multibrand_store_names.map((store) => (
+          {results.has_multibrand_stores && results.multibrand_store_tiers ? (
+            <div className="space-y-2">
+              {results.multibrand_store_tiers.tier1?.length ? (
+                <div>
+                  <p className="text-[10px] text-melonn-navy/40 uppercase tracking-wider mb-1">Retail Especializado (Tier 1)</p>
+                  <div className="flex flex-wrap gap-1.5">
+                    {results.multibrand_store_tiers.tier1.map((store) => (
+                      <span
+                        key={store}
+                        className="inline-flex items-center gap-1 text-xs px-2.5 py-1 bg-melonn-green-50 text-melonn-green rounded-full font-medium"
+                      >
+                        ✓ {store}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              ) : null}
+              {results.multibrand_store_tiers.mayorista?.length ? (
+                <div>
+                  <p className="text-[10px] text-melonn-navy/40 uppercase tracking-wider mb-1">Mayoristas</p>
+                  <div className="flex flex-wrap gap-1.5">
+                    {results.multibrand_store_tiers.mayorista.map((store) => (
+                      <span
+                        key={store}
+                        className="inline-flex items-center gap-1 text-xs px-2.5 py-1 bg-melonn-purple-50 text-melonn-purple rounded-full font-medium"
+                      >
+                        ✓ {store}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              ) : null}
+            </div>
+          ) : results.has_multibrand_stores && results.multibrand_store_names?.length ? (
+            <div className="flex flex-wrap gap-1.5">
+              {results.multibrand_store_names.map((store) => (
                 <span
                   key={store}
                   className="inline-flex items-center gap-1 text-xs px-2.5 py-1 bg-melonn-green-50 text-melonn-green rounded-full font-medium"
                 >
                   ✓ {store}
                 </span>
-              ))
-            ) : (
+              ))}
+            </div>
+          ) : (
+            <div className="flex flex-wrap gap-1.5">
               <BoolBadge value={results.has_multibrand_stores} label="Multimarca" />
-            )}
-          </div>
+            </div>
+          )}
         </div>
 
         {/* Marketplaces */}

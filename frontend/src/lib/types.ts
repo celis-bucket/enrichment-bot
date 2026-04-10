@@ -93,6 +93,7 @@ export interface EnrichmentV2Results {
   own_store_count_mex?: number | null;
   has_multibrand_stores?: boolean | null;
   multibrand_store_names?: string[];
+  multibrand_store_tiers?: { tier1?: string[]; mayorista?: string[] } | null;
   on_mercadolibre?: boolean | null;
   on_amazon?: boolean | null;
   on_rappi?: boolean | null;

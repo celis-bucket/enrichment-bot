@@ -108,6 +108,7 @@ SHEET_HEADERS = [
     "own_store_count_mex",
     "has_multibrand_stores",
     "multibrand_store_names",
+    "multibrand_store_tiers",
     "on_mercadolibre",
     "on_amazon",
     "on_rappi",
@@ -234,6 +235,7 @@ class EnrichmentResult:
     own_store_count_mex: Optional[int] = None
     has_multibrand_stores: Optional[bool] = None
     multibrand_store_names: Optional[List[str]] = field(default=None)
+    multibrand_store_tiers: Optional[Dict[str, List[str]]] = field(default=None)  # {"tier1": [...], "mayorista": [...]}
     on_mercadolibre: Optional[bool] = None
     on_amazon: Optional[bool] = None
     on_rappi: Optional[bool] = None
@@ -296,11 +298,13 @@ class EnrichmentResult:
                 d["workflow_execution_log"] = json.loads(wlog)
             except (json.JSONDecodeError, TypeError):
                 d["workflow_execution_log"] = []
-        # Serialize list fields to JSON strings for JSONB columns
+        # Serialize list/dict fields to JSON strings for JSONB columns
         for list_field in ("multibrand_store_names", "marketplace_names"):
             val = d.get(list_field)
             if isinstance(val, list):
                 d[list_field] = json.dumps(val)
+        if isinstance(d.get("multibrand_store_tiers"), dict):
+            d["multibrand_store_tiers"] = json.dumps(d["multibrand_store_tiers"])
         # Merge prediction fields if provided
         if prediction:
             d["predicted_orders_p10"] = prediction.get("predicted_orders_p10")

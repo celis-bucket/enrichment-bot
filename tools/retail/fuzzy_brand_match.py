@@ -166,10 +166,10 @@ def fuzzy_match_brand(
             if len(db_norm) < 4:
                 continue
             # DB brand contained in candidate (e.g., "savvy" in "youaresavvy")
-            if db_norm in candidate and len(db_norm) / len(candidate) >= 0.4:
+            if db_norm in candidate and len(db_norm) / len(candidate) >= 0.6:
                 return _format_matches(rows, "substring", 90)
             # Candidate contained in DB brand (e.g., "boost" in "beauty boost")
-            if candidate in db_norm and len(candidate) / len(db_norm) >= 0.4:
+            if candidate in db_norm and len(candidate) / len(db_norm) >= 0.6:
                 return _format_matches(rows, "substring", 90)
 
     # === STAGE 4: Fuzzy (rapidfuzz) ===
@@ -213,9 +213,16 @@ def fuzzy_match_brand(
         # Supplementary: also check if individual tokens of the matched name
         # exist as standalone brands in other stores. Example: matched
         # "ole capilar" in Farmatodo → also find "ole" in Pasteur.
+        # Skip tokens that are common store names to avoid false positives.
         matched_stores = {r["store_name"] for r in results}
+        _SKIP_TOKENS = {
+            "falabella", "exito", "alkosto", "flamingo", "jumbo", "metro",
+            "olimpica", "panamericana", "farmatodo", "liverpool", "coppel",
+            "sears", "walmart", "soriana", "costco", "sanborns", "suburbia",
+            "ara", "d1", "dax", "heb", "beauty", "skin", "care", "cosmetics",
+        }
         for token in best_match_key.split():
-            if len(token) < 3:
+            if len(token) < 4 or token in _SKIP_TOKENS:
                 continue
             if token in exact_index and token != best_match_key:
                 for row in exact_index[token]:
