@@ -141,6 +141,30 @@ PLATFORM_SIGNATURES = {
         ],
         'path_patterns': [],
     },
+    'TiendaNube': {
+        'meta_generator': ['Tienda Nube', 'TiendaNube', 'Nuvemshop'],
+        'cdn_patterns': [
+            r'd26lpennugtm8s\.cloudfront\.net',
+            r'cdn\.tiendanube\.com',
+            r'cdn\.nuvemshop\.com\.br',
+        ],
+        'script_patterns': [
+            r'tiendanube',
+            r'nuvemshop',
+            r'd26lpennugtm8s\.cloudfront\.net',
+        ],
+        'headers': [],
+        'html_patterns': [
+            r'tiendanube',
+            r'nuvemshop',
+            r'js-tiendanube',
+            r'store\.tiendanube',
+        ],
+        'path_patterns': [
+            r'/tiendanube/',
+            r'/nuvemshop/',
+        ],
+    },
 }
 
 

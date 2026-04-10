@@ -270,8 +270,26 @@ def _extract_page_id_from_ads(search_term: str, country: str) -> Optional[str]:
             if ad_page_id and page_name == term_lower:
                 return str(ad_page_id)
 
-        # No exact match found — don't guess, return None to fall through
-        # to keyword-only search which picks the lowest count
+        # Pass 2: fuzzy page_name match (handles minor differences)
+        try:
+            from rapidfuzz import fuzz
+            best_id = None
+            best_score = 0
+            for ad in ads:
+                page_name = (ad.get("page_name") or "").lower().strip()
+                ad_page_id = ad.get("page_id") or (ad.get("snapshot") or {}).get("page_id")
+                if not ad_page_id or not page_name:
+                    continue
+                score = fuzz.token_set_ratio(term_lower, page_name)
+                if score >= 85 and score > best_score:
+                    best_score = score
+                    best_id = str(ad_page_id)
+            if best_id:
+                return best_id
+        except ImportError:
+            pass
+
+        # No match found — return None to fall through to keyword-only search
         return None
     except Exception:
         return None
@@ -319,7 +337,8 @@ def get_meta_ads_multi_search(
             if result and result.get("success"):
                 return result
 
-    # Final fallback: keyword search, pick lowest non-zero count
+    # Final fallback: keyword search with consistency check
+    # Only trust results when at least 2 search terms return similar counts
     results = []
     for term in search_terms:
         if not term:
@@ -332,6 +351,16 @@ def get_meta_ads_multi_search(
 
     if results:
         results.sort(key=lambda x: x[0])
+        # If multiple results, check if any two are within 50% of each other
+        # (consistent counts suggest they're referring to the same brand)
+        if len(results) >= 2:
+            for i in range(len(results)):
+                for j in range(i + 1, len(results)):
+                    lo, hi = results[i][0], results[j][0]
+                    if hi <= lo * 2:  # Within 2x of each other
+                        return results[i][1]  # Return the lower of the consistent pair
+            # No consistent pair — return the lowest as best guess but cap at median
+            return results[0][1]
         return results[0][1]
 
     return {

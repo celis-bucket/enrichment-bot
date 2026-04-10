@@ -20,7 +20,7 @@ export function PredictionCardV2({ prediction, domain = '', feedback = [] }: Pre
   const confettiFired = useRef(false);
 
   useEffect(() => {
-    if (prediction && prediction.predicted_orders_p50 >= 500 && !confettiFired.current) {
+    if (prediction && prediction.predicted_orders_p90 >= 500 && !confettiFired.current) {
       confettiFired.current = true;
       // Fire confetti with Melonn brand colors
       confetti({
@@ -58,7 +58,7 @@ export function PredictionCardV2({ prediction, domain = '', feedback = [] }: Pre
   }
 
   const { predicted_orders_p10, predicted_orders_p50, predicted_orders_p90 } = prediction;
-  const isIdeal = predicted_orders_p50 >= 500;
+  const isIdeal = predicted_orders_p90 >= 500;
 
   // Calculate bar positions
   const maxVal = Math.max(predicted_orders_p90, 1);
@@ -83,12 +83,12 @@ export function PredictionCardV2({ prediction, domain = '', feedback = [] }: Pre
         </div>
       )}
 
-      {/* Main P50 display */}
+      {/* Main P90 display */}
       <div className="text-center mb-4">
         <span className="text-3xl font-bold text-melonn-navy font-heading">
-          {formatOrders(predicted_orders_p50)}
+          {formatOrders(predicted_orders_p90)}
         </span>
-        <p className="text-xs text-melonn-navy/50 mt-1">Órdenes mensuales estimadas</p>
+        <p className="text-xs text-melonn-navy/50 mt-1">Potencial de órdenes mensuales</p>
       </div>
 
       {/* Range bar */}

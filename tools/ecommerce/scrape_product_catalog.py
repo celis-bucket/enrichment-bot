@@ -266,6 +266,10 @@ def scrape_vtex_api(base_url: str) -> Dict[str, Any]:
         sample_products = []
 
         for product in all_products:
+            # Skip inactive VTEX products
+            if product.get('isActive') is False:
+                continue
+
             title = product.get('productName', 'Unknown')
             try:
                 price = product['items'][0]['sellers'][0]['commertialOffer']['Price']
@@ -371,15 +375,23 @@ def scrape_shopify_api(base_url: str) -> Dict[str, Any]:
         sample_products = []
 
         for product in products:
+            # Skip inactive/unpublished products
+            if product.get('status') and product['status'] != 'active':
+                continue
+            if product.get('published_at') is None:
+                continue
+
             title = product.get('title', 'Unknown')
             variants = product.get('variants', [])
 
             if variants:
+                # Use first available (non-draft) variant price
                 price_str = variants[0].get('price', '0')
                 try:
                     price = float(price_str)
-                    prices.append(price)
-                    sample_products.append({'name': title, 'price': price})
+                    if price > 0:
+                        prices.append(price)
+                        sample_products.append({'name': title, 'price': price})
                 except (ValueError, TypeError):
                     pass
 
