@@ -8,8 +8,8 @@ Dependencies: tools/core/web_scraper.py, tools/retail/store_registry.py, re, bs4
 
 Detection strategies:
 1. Brand website: find "where to buy" section with store logos/names
-2. Supabase DB: check retail_store_brands for brand presence (populated by scrapers)
-3. Instagram bio: mentions of department store names
+2. Instagram bio: mentions of department store names
+3. Google Shopping sellers (pre-classified by orchestrator)
 """
 
 import re
@@ -318,27 +318,6 @@ def detect_multibrand_stores(
         if homepage_stores:
             all_stores.update(homepage_stores)
             evidence_list.append(f"Homepage mentions: {', '.join(homepage_stores)}")
-
-        # Source B: Supabase DB — check if brand appears in scraped store data
-        # Uses fuzzy matching cascade: exact → candidates → token containment → fuzzy
-        if supabase_client:
-            try:
-                from retail.store_registry import find_brand_in_stores_fuzzy
-                db_matches = find_brand_in_stores_fuzzy(
-                    supabase_client, brand_name, country=geography,
-                    domain=domain, ig_username=ig_username,
-                    apollo_name=apollo_name,
-                )
-                if db_matches:
-                    db_store_names = [m["store_name"] for m in db_matches]
-                    all_stores.update(db_store_names)
-                    match_type = db_matches[0].get("match_type", "exact")
-                    match_score = db_matches[0].get("match_score", 100)
-                    evidence_list.append(
-                        f"DB matches ({match_type}@{match_score}): {', '.join(db_store_names)}"
-                    )
-            except Exception as e:
-                evidence_list.append(f"DB brand lookup failed: {str(e)}")
 
         # Source C: Instagram bio
         ig_stores = _check_ig_bio_for_stores(ig_bio, known_stores)
